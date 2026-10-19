@@ -6,7 +6,6 @@ android {
 
     defaultConfig {
         minSdk 24
-        targetSdk 36
     }
     buildTypes {
         release {
@@ -16,6 +15,7 @@ android {
     }
     lint {
         abortOnError true
+        targetSdk 36
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
@@ -23,6 +23,9 @@ android {
     }
     kotlinOptions {
         jvmTarget = "21"
+    }
+    testOptions {
+        targetSdk 36
     }
 }
 
