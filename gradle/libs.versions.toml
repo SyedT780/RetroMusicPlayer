@@ -38,6 +38,7 @@ room_version = "2.7.1"
 core_version = "1.16.0"
 
 #plugins
+compose_bom_version = "2024.12.01"
 devTools_ksp_version = "2.3.2"
 ben_manes_versoin = "0.46.0"
 slidableactivity = "2.1.0"
@@ -110,6 +111,16 @@ androidx-mediarouter = { group = "androidx.mediarouter", name = "mediarouter", v
 nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }
 
 
+#compose
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose_bom_version" }
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
+compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
+compose-animation = { group = "androidx.compose.animation", name = "animation" }
+compose-runtime = { group = "androidx.compose.runtime", name = "runtime" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+activity-compose = { group = "androidx.activity", name = "activity-compose", version = "1.10.0" }
+
 #androidx
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat_version" }
 androidx-annotation = { group = "androidx.annotation", name = "annotation", version = "1.9.1" }
@@ -128,6 +139,7 @@ junit = { module = "junit:junit", version = "4.13.2" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlinGradlePlugin" }
+kotlinCompose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlinGradlePlugin" }
 androidx-navigation-safeargs = { id = "androidx.navigation.safeargs.kotlin", version.ref = "navigation_version" }
 github-ben-manes = { id = "com.github.ben-manes.versions", version.ref = "ben_manes_versoin" }
 google-devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "devTools_ksp_version" }

@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"
     alias(libs.plugins.androidx.navigation.safeargs)
     id("org.jetbrains.kotlin.plugin.parcelize")
     alias(libs.plugins.google.devtools.ksp)
@@ -68,6 +69,7 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+        compose = true
     }
     packaging {
         resources {
@@ -173,6 +175,16 @@ dependencies {
     implementation(libs.tankery.circularSeekBar)
 
     implementation(libs.androidx.exoplayer)
+
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.animation)
+    implementation(libs.compose.runtime)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.activity.compose)
+
     testImplementation(libs.junit)
 }
 

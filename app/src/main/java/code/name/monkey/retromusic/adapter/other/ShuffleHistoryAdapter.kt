@@ -16,17 +16,32 @@ package code.name.monkey.retromusic.adapter.other
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
+import androidx.savedstate.findViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import code.name.monkey.retromusic.databinding.ItemShuffleRoundBinding
+import code.name.monkey.retromusic.helper.ShuffleAuditLogger
 import code.name.monkey.retromusic.helper.ShuffleAuditLogger.ShuffleRoundMetrics
+import code.name.monkey.retromusic.visualizer.InteractiveShuffleArtCanvas
 import java.util.Locale
 
 class ShuffleHistoryAdapter(
-    private var items: List<ShuffleRoundMetrics> = emptyList()
+    private var items: List<ShuffleRoundMetrics> = emptyList(),
+    private val fragment: Fragment? = null
 ) : RecyclerView.Adapter<ShuffleHistoryAdapter.ViewHolder>() {
+
+    private var expandedPosition: Int = -1
 
     fun swapDataset(newItems: List<ShuffleRoundMetrics>) {
         items = newItems
+        expandedPosition = -1
         notifyDataSetChanged()
     }
 
@@ -40,7 +55,17 @@ class ShuffleHistoryAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(items[position])
+        val isExpanded = position == expandedPosition
+        holder.bind(items[position], isExpanded, fragment) {
+            val previousExpanded = expandedPosition
+            expandedPosition = if (expandedPosition == position) -1 else position
+            if (previousExpanded != -1) {
+                notifyItemChanged(previousExpanded)
+            }
+            if (expandedPosition != -1) {
+                notifyItemChanged(expandedPosition)
+            }
+        }
     }
 
     override fun getItemCount(): Int = items.size
@@ -48,7 +73,12 @@ class ShuffleHistoryAdapter(
     class ViewHolder(private val binding: ItemShuffleRoundBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(item: ShuffleRoundMetrics) {
+        fun bind(
+            item: ShuffleRoundMetrics,
+            isExpanded: Boolean,
+            fragment: Fragment?,
+            onToggleExpand: () -> Unit
+        ) {
             val modeStr = if (item.isEnhanced) "Enhanced" else "Normal"
             binding.roundTitle.text = "Shuffle #${item.roundNumber} • $modeStr"
 
@@ -82,6 +112,51 @@ class ShuffleHistoryAdapter(
                     item.repeatedBigramTotal,
                     item.repeatedBigramPct
                 )
+            }
+
+            binding.canvasContainer.isVisible = isExpanded
+
+            if (isExpanded) {
+                binding.composeHost.removeAllViews()
+
+                val context = binding.root.context
+                val composeView = ComposeView(context).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+
+                val lifecycleOwner = fragment?.viewLifecycleOwner ?: binding.root.findViewTreeLifecycleOwner()
+                val savedStateOwner = fragment ?: binding.root.findViewTreeSavedStateRegistryOwner()
+
+                if (lifecycleOwner != null) {
+                    composeView.setViewTreeLifecycleOwner(lifecycleOwner)
+                }
+                if (savedStateOwner != null) {
+                    composeView.setViewTreeSavedStateRegistryOwner(savedStateOwner)
+                }
+
+                val visualRecords = ShuffleAuditLogger.getVisualRecords()
+                val currentRecord = visualRecords.find { it.runId == item.roundNumber }
+                val historicalRecords = visualRecords.filter { it.runId < item.roundNumber }.takeLast(4).reversed()
+
+                if (currentRecord != null) {
+                    binding.playNextLegendItem.isVisible = currentRecord.manualPlayNextIndices.isNotEmpty()
+
+                    composeView.setContent {
+                        InteractiveShuffleArtCanvas(
+                            currentRecord = currentRecord,
+                            historicalRecords = historicalRecords,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    binding.composeHost.addView(composeView)
+                }
+            }
+
+            binding.cardRoot.setOnClickListener {
+                onToggleExpand()
             }
         }
     }

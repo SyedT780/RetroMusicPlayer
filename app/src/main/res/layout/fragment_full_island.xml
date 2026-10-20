@@ -139,7 +139,8 @@
         android:layout_marginBottom="24dp"
         android:background="@drawable/bg_island_capsule"
         android:elevation="16dp"
-        android:padding="16dp"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="20dp"
         app:layout_constraintBottom_toTopOf="@+id/navigationBarGuideline"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
@@ -149,55 +150,10 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- Dynamic Island Header Row -->
-            <RelativeLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingBottom="8dp">
-
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_alignParentStart="true"
-                    android:layout_centerVertical="true"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <View
-                        android:id="@+id/islandDot"
-                        android:layout_width="8dp"
-                        android:layout_height="8dp"
-                        android:layout_marginEnd="6dp"
-                        android:background="@drawable/bg_island_capsule"
-                        android:backgroundTint="#FF3366" />
-
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/islandHeaderLabel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:letterSpacing="0.1"
-                        android:text="DYNAMIC ISLAND"
-                        android:textColor="@color/md_white_1000"
-                        android:textSize="10sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <!-- Center Drag Handle Indicator -->
-                <View
-                    android:id="@+id/islandDragHandle"
-                    android:layout_width="36dp"
-                    android:layout_height="4dp"
-                    android:layout_centerInParent="true"
-                    android:background="@drawable/bg_island_capsule"
-                    android:backgroundTint="#66FFFFFF" />
-
-            </RelativeLayout>
-
             <!-- Song Info Row: Favorite + Marquee Title & Artist + Menu -->
             <RelativeLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp">
+                android:layout_height="wrap_content">
 
                 <androidx.appcompat.widget.AppCompatImageView
                     android:id="@+id/songFavourite"
@@ -324,7 +280,7 @@
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:orientation="horizontal"
-                android:paddingVertical="4dp">
+                android:paddingTop="6dp">
 
                 <androidx.appcompat.widget.AppCompatImageButton
                     android:id="@+id/repeatButton"
@@ -370,49 +326,6 @@
                     android:padding="10dp"
                     app:srcCompat="@drawable/ic_shuffle" />
             </LinearLayout>
-
-            <!-- Codec Info & Volume Bar Row -->
-            <RelativeLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:paddingTop="8dp">
-
-                <com.google.android.material.textview.MaterialTextView
-                    android:id="@+id/codecInfo"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_alignParentStart="true"
-                    android:layout_centerVertical="true"
-                    android:background="@drawable/bg_frosted_subcard"
-                    android:paddingHorizontal="8dp"
-                    android:paddingVertical="3dp"
-                    android:text="FLAC • 24-bit / 96kHz"
-                    android:textColor="@color/md_white_1000"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
-
-                <LinearLayout
-                    android:layout_width="120dp"
-                    android:layout_height="wrap_content"
-                    android:layout_alignParentEnd="true"
-                    android:layout_centerVertical="true"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <androidx.appcompat.widget.AppCompatImageView
-                        android:layout_width="16dp"
-                        android:layout_height="16dp"
-                        android:layout_marginEnd="4dp"
-                        app:srcCompat="@drawable/ic_volume_up"
-                        app:tint="@color/md_white_1000" />
-
-                    <FrameLayout
-                        android:id="@+id/volumeFragmentContainer"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content" />
-                </LinearLayout>
-            </RelativeLayout>
 
         </LinearLayout>
     </FrameLayout>

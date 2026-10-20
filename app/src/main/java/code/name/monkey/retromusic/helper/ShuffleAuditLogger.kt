@@ -18,6 +18,7 @@ import android.os.Environment
 import android.util.Log
 import code.name.monkey.retromusic.App
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.visualizer.ShuffleVisualRecord
 import java.io.File
 import java.util.Locale
 
@@ -35,8 +36,32 @@ object ShuffleAuditLogger {
 
     data class ShuffleRun(
         val descriptors: List<TrackAuditDescriptor>,
-        val isEnhanced: Boolean
-    )
+        val isEnhanced: Boolean,
+        val permutedTrackIndices: IntArray = intArrayOf(),
+        val manualPlayNextIndices: List<Int> = emptyList()
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as ShuffleRun
+
+            if (descriptors != other.descriptors) return false
+            if (isEnhanced != other.isEnhanced) return false
+            if (!permutedTrackIndices.contentEquals(other.permutedTrackIndices)) return false
+            if (manualPlayNextIndices != other.manualPlayNextIndices) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = descriptors.hashCode()
+            result = 31 * result + isEnhanced.hashCode()
+            result = 31 * result + permutedTrackIndices.contentHashCode()
+            result = 31 * result + manualPlayNextIndices.hashCode()
+            return result
+        }
+    }
 
     data class ShuffleRoundMetrics(
         val roundNumber: Int,
@@ -61,14 +86,17 @@ object ShuffleAuditLogger {
         val cumulativeBigramPairs: Int,
         val cumulativeBigramPct: Double,
         val rounds: List<ShuffleRoundMetrics>,
+        val visualRecords: List<ShuffleVisualRecord>,
         val rawReportText: String
     )
 
     private val shuffleHistory = mutableListOf<ShuffleRun>()
+    private val domainIdMap = mutableMapOf<Long, Int>()
 
     @Synchronized
     fun resetHistory() {
         shuffleHistory.clear()
+        domainIdMap.clear()
     }
 
     @Synchronized
@@ -84,6 +112,7 @@ object ShuffleAuditLogger {
                 cumulativeBigramPairs = 0,
                 cumulativeBigramPct = 0.0,
                 rounds = emptyList(),
+                visualRecords = emptyList(),
                 rawReportText = ""
             )
         }
@@ -213,6 +242,30 @@ object ShuffleAuditLogger {
 
         val reportText = generateReportText(lastRun.isEnhanced)
 
+        val visualRecords = mutableListOf<ShuffleVisualRecord>()
+        for (i in 0 until m) {
+            val roundMetric = roundMetricsList[i]
+            val run = shuffleHistory[i]
+            val mode = if (run.isEnhanced) "Enhanced" else "Normal"
+            val sameSlotText = if (i == 0) "---" else String.format(Locale.US, "%d/%d (%.1f%%)", roundMetric.sameSlotMatches, roundMetric.sameSlotTotal, roundMetric.sameSlotPct)
+            val repeatedTransText = if (i == 0) "---" else String.format(Locale.US, "%d/%d (%.1f%%)", roundMetric.repeatedBigramPairs, roundMetric.repeatedBigramTotal, roundMetric.repeatedBigramPct)
+            val scoreText = if (i == 0) "Baseline" else String.format(Locale.US, "%.1f%%", roundMetric.repetitivenessScore)
+
+            visualRecords.add(
+                ShuffleVisualRecord(
+                    runId = i + 1,
+                    mode = mode,
+                    trackCount = roundMetric.trackCount,
+                    artistCollisions = roundMetric.artistCollisions,
+                    sameSlotMatchText = sameSlotText,
+                    repeatedTransText = repeatedTransText,
+                    repetitivenessScore = scoreText,
+                    permutedTrackIndices = run.permutedTrackIndices,
+                    manualPlayNextIndices = run.manualPlayNextIndices
+                )
+            )
+        }
+
         return ShuffleAuditSummary(
             totalShuffles = m,
             activeMode = modeStr,
@@ -222,20 +275,47 @@ object ShuffleAuditLogger {
             cumulativeBigramPairs = totalSeenPairs,
             cumulativeBigramPct = totalSeenPairsPct,
             rounds = roundMetricsList,
+            visualRecords = visualRecords,
             rawReportText = reportText
         )
+    }
+
+    @Synchronized
+    fun getVisualRecords(): List<ShuffleVisualRecord> {
+        return getAuditSummary().visualRecords
     }
 
     @Synchronized
     fun logShuffle(
         shuffledList: List<Song>,
         isEnhancedShuffle: Boolean,
-        customDirectory: File? = null
+        customDirectory: File? = null,
+        manualPlayNextIndices: List<Int> = emptyList()
     ): String {
         if (shuffledList.isEmpty()) return ""
 
         val descriptors = shuffledList.map { TrackAuditDescriptor(it.id, it.artistId) }
-        shuffleHistory.add(ShuffleRun(descriptors, isEnhancedShuffle))
+
+        // Update canonical domain track index mapping sorted deterministically by ID
+        val sortedIds = shuffledList.map { it.id }.distinct().sorted()
+        sortedIds.forEachIndexed { sortedIndex, songId ->
+            if (!domainIdMap.containsKey(songId)) {
+                domainIdMap[songId] = domainIdMap.size
+            }
+        }
+
+        val permutedIndices = IntArray(shuffledList.size) { i ->
+            domainIdMap[shuffledList[i].id] ?: i
+        }
+
+        shuffleHistory.add(
+            ShuffleRun(
+                descriptors = descriptors,
+                isEnhanced = isEnhancedShuffle,
+                permutedTrackIndices = permutedIndices,
+                manualPlayNextIndices = manualPlayNextIndices
+            )
+        )
 
         val report = generateReportText(isEnhancedShuffle)
 

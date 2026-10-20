@@ -211,10 +211,7 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         binding.text.setTextColor(palette.textSecondary)
         binding.songCurrentProgress.setTextColor(palette.textSecondary)
         binding.songTotalTime.setTextColor(palette.textSecondary)
-        binding.islandHeaderLabel.setTextColor(palette.textSecondary)
-        binding.codecInfo.setTextColor(palette.textSecondary)
 
-        binding.islandDot.backgroundTintList = ColorStateList.valueOf(palette.accentColor)
         binding.upNextDot.backgroundTintList = ColorStateList.valueOf(palette.accentColor)
 
         binding.playPauseButton.backgroundTintList = ColorStateList.valueOf(palette.fabColor)

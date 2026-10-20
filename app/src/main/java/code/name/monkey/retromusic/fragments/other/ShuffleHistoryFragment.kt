@@ -24,7 +24,6 @@ import code.name.monkey.retromusic.adapter.other.ShuffleHistoryAdapter
 import code.name.monkey.retromusic.databinding.FragmentShuffleHistoryBinding
 import code.name.monkey.retromusic.extensions.materialDialog
 import code.name.monkey.retromusic.helper.ShuffleAuditLogger
-import com.afollestad.materialdialogs.MaterialDialog
 import java.util.Locale
 
 class ShuffleHistoryFragment : Fragment(R.layout.fragment_shuffle_history) {
@@ -38,7 +37,7 @@ class ShuffleHistoryFragment : Fragment(R.layout.fragment_shuffle_history) {
         super.onViewCreated(view, savedInstanceState)
         _binding = FragmentShuffleHistoryBinding.bind(view)
 
-        adapter = ShuffleHistoryAdapter()
+        adapter = ShuffleHistoryAdapter(fragment = this)
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = adapter
 
