@@ -167,6 +167,8 @@
     <string name="for_you">For you</string>
     <string name="full">Full</string>
     <string name="full_card">Full card</string>
+    <string name="full_island" translatable="false">Full Island</string>
+    <string name="now_playing_screen_full_island" translatable="false">Full Island</string>
     <string name="general_settings_summary">Change the theme and colors of the app</string>
     <string name="general_settings_title">Look and feel</string>
     <string name="genre">Genre</string>

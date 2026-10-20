@@ -967,10 +967,20 @@ class MusicService : MediaBrowserServiceCompat(),
                     PreferenceManager.getDefaultSharedPreferences(this@MusicService).getInt(
                         SAVED_POSITION_IN_TRACK, -1
                     )
-                if (restoredQueue.size > 0 && restoredQueue.size == restoredOriginalQueue.size && restoredPosition != -1) {
-                    originalPlayingQueue = ArrayList(restoredOriginalQueue)
+                if (restoredQueue.isNotEmpty() && restoredPosition != -1) {
+                    val validOriginalQueue = if (restoredOriginalQueue.size == restoredQueue.size) {
+                        restoredOriginalQueue
+                    } else {
+                        restoredQueue
+                    }
+                    originalPlayingQueue = ArrayList(validOriginalQueue)
                     playingQueue = ArrayList(restoredQueue)
-                    position = restoredPosition
+                    val validPosition = if (restoredPosition in restoredQueue.indices) {
+                        restoredPosition
+                    } else {
+                        0
+                    }
+                    position = validPosition
                     withContext(Main) {
                         openCurrent {
                             prepareNext()

@@ -103,8 +103,15 @@ public class MusicPlaybackQueueStore extends SQLiteOpenHelper {
 
   public synchronized void saveQueues(
       @NonNull final List<Song> playingQueue, @NonNull final List<Song> originalPlayingQueue) {
-    saveQueue(PLAYING_QUEUE_TABLE_NAME, playingQueue);
-    saveQueue(ORIGINAL_PLAYING_QUEUE_TABLE_NAME, originalPlayingQueue);
+    final SQLiteDatabase database = getWritableDatabase();
+    database.beginTransaction();
+    try {
+      saveQueueInternal(database, PLAYING_QUEUE_TABLE_NAME, playingQueue);
+      saveQueueInternal(database, ORIGINAL_PLAYING_QUEUE_TABLE_NAME, originalPlayingQueue);
+      database.setTransactionSuccessful();
+    } finally {
+      database.endTransaction();
+    }
   }
 
   private void createTable(@NonNull final SQLiteDatabase db, final String tableName) {
@@ -163,51 +170,35 @@ public class MusicPlaybackQueueStore extends SQLiteOpenHelper {
   }
 
   /**
-   * Clears the existing database and saves the queue into the db so that when the app is restarted,
-   * the tracks you were listening to is restored
+   * Clears the existing table and saves the queue into the db atomically.
    *
+   * @param database the writable database instance
+   * @param tableName table to save to
    * @param queue the queue to save
    */
-  private synchronized void saveQueue(final String tableName, @NonNull final List<Song> queue) {
-    final SQLiteDatabase database = getWritableDatabase();
-    database.beginTransaction();
+  private void saveQueueInternal(
+      @NonNull final SQLiteDatabase database,
+      @NonNull final String tableName,
+      @NonNull final List<Song> queue) {
+    database.delete(tableName, null, null);
+    for (int i = 0; i < queue.size(); i++) {
+      Song song = queue.get(i);
+      ContentValues values = new ContentValues(12);
 
-    try {
-      database.delete(tableName, null, null);
-      database.setTransactionSuccessful();
-    } finally {
-      database.endTransaction();
-    }
+      values.put(BaseColumns._ID, song.getId());
+      values.put(AudioColumns.TITLE, song.getTitle());
+      values.put(AudioColumns.TRACK, song.getTrackNumber());
+      values.put(AudioColumns.YEAR, song.getYear());
+      values.put(AudioColumns.DURATION, song.getDuration());
+      values.put(Constants.DATA, song.getData());
+      values.put(AudioColumns.DATE_MODIFIED, song.getDateModified());
+      values.put(AudioColumns.ALBUM_ID, song.getAlbumId());
+      values.put(AudioColumns.ALBUM, song.getAlbumName());
+      values.put(AudioColumns.ARTIST_ID, song.getArtistId());
+      values.put(AudioColumns.ARTIST, song.getArtistName());
+      values.put(AudioColumns.COMPOSER, song.getComposer());
 
-    final int NUM_PROCESS = 20;
-    int position = 0;
-    while (position < queue.size()) {
-      database.beginTransaction();
-      try {
-        for (int i = position; i < queue.size() && i < position + NUM_PROCESS; i++) {
-          Song song = queue.get(i);
-          ContentValues values = new ContentValues(4);
-
-          values.put(BaseColumns._ID, song.getId());
-          values.put(AudioColumns.TITLE, song.getTitle());
-          values.put(AudioColumns.TRACK, song.getTrackNumber());
-          values.put(AudioColumns.YEAR, song.getYear());
-          values.put(AudioColumns.DURATION, song.getDuration());
-          values.put(Constants.DATA, song.getData());
-          values.put(AudioColumns.DATE_MODIFIED, song.getDateModified());
-          values.put(AudioColumns.ALBUM_ID, song.getAlbumId());
-          values.put(AudioColumns.ALBUM, song.getAlbumName());
-          values.put(AudioColumns.ARTIST_ID, song.getArtistId());
-          values.put(AudioColumns.ARTIST, song.getArtistName());
-          values.put(AudioColumns.COMPOSER, song.getComposer());
-
-          database.insert(tableName, null, values);
-        }
-        database.setTransactionSuccessful();
-      } finally {
-        database.endTransaction();
-        position += NUM_PROCESS;
-      }
+      database.insert(tableName, null, values);
     }
   }
 }

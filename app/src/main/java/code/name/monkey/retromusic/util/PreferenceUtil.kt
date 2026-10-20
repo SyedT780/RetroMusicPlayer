@@ -679,12 +679,7 @@ object PreferenceUtil {
     var nowPlayingScreen: NowPlayingScreen
         get() {
             val id: Int = sharedPreferences.getInt(NOW_PLAYING_SCREEN_ID, 0)
-            for (nowPlayingScreen in NowPlayingScreen.values()) {
-                if (nowPlayingScreen.id == id) {
-                    return nowPlayingScreen
-                }
-            }
-            return NowPlayingScreen.Adaptive
+            return NowPlayingScreen.fromId(id)
         }
         set(value) = sharedPreferences.edit {
             putInt(NOW_PLAYING_SCREEN_ID, value.id)

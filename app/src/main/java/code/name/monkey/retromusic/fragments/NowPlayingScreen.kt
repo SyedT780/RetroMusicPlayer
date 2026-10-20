@@ -37,6 +37,7 @@ enum class NowPlayingScreen constructor(
     Fit(R.string.fit, R.drawable.np_fit, 12, AlbumCoverStyle.Full),
     Flat(R.string.flat, R.drawable.np_flat, 1, AlbumCoverStyle.Flat),
     Full(R.string.full, R.drawable.np_full, 2, AlbumCoverStyle.Full),
+    FullIsland(R.string.full_island, R.drawable.np_full, 13, AlbumCoverStyle.Full),
     Gradient(R.string.gradient, R.drawable.np_gradient, 17, AlbumCoverStyle.Full),
     Material(R.string.material, R.drawable.np_material, 11, AlbumCoverStyle.Normal),
     MD3(R.string.md3, R.drawable.np_normal, 18, AlbumCoverStyle.Normal),
@@ -44,5 +45,10 @@ enum class NowPlayingScreen constructor(
     Peek(R.string.peek, R.drawable.np_peek, 14, AlbumCoverStyle.Normal),
     Plain(R.string.plain, R.drawable.np_plain, 3, AlbumCoverStyle.Normal),
     Simple(R.string.simple, R.drawable.np_simple, 8, AlbumCoverStyle.Normal),
-    Tiny(R.string.tiny, R.drawable.np_tiny, 7, null),
+    Tiny(R.string.tiny, R.drawable.np_tiny, 7, null);
+
+    companion object {
+        fun fromId(id: Int): NowPlayingScreen =
+            values().firstOrNull { it.id == id } ?: FullIsland
+    }
 }

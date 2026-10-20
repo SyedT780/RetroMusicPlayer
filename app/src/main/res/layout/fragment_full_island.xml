@@ -1,0 +1,438 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/playerContainer"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- LAYER 1: Full-Bleed Artwork Container -->
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/playerAlbumCoverFragment"
+        android:name="code.name.monkey.retromusic.fragments.player.PlayerAlbumCoverFragment"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:layout="@layout/fragment_album_full_cover" />
+
+    <!-- LAYER 2: Protective Top Scrim & Bottom Ambient Glow -->
+    <View
+        android:id="@+id/topScrim"
+        android:layout_width="match_parent"
+        android:layout_height="140dp"
+        android:background="@drawable/shadow_down_full_theme"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <View
+        android:id="@+id/ambientGlow"
+        android:layout_width="match_parent"
+        android:layout_height="380dp"
+        android:background="@drawable/shadow_up_full_theme"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+    <!-- LAYER 3: Top Navigation Toolbar -->
+    <include layout="@layout/status_bar" />
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/playerToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingBottom="4dp"
+        app:contentInsetEndWithActions="0dp"
+        app:contentInsetStart="0dp"
+        app:contentInsetStartWithNavigation="0dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/status_bar"
+        app:navigationIcon="@drawable/ic_keyboard_arrow_down"
+        app:titleMargin="0dp"
+        app:titleMargins="0dp">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <!-- Up Next Pill Container -->
+            <LinearLayout
+                android:id="@+id/upNextPill"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/bg_frosted_subcard"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="6dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/artistImage"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <View
+                    android:id="@+id/upNextDot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_island_capsule"
+                    android:backgroundTint="#FF3366" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/nextSongLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:alpha="0.75"
+                        android:text="@string/next_song"
+                        android:textAppearance="@style/TextViewSubtitle2"
+                        android:textColor="@color/md_white_1000"
+                        android:textSize="9sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/nextSong"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:singleLine="true"
+                        android:textAppearance="@style/TextViewSubtitle1"
+                        android:textColor="@color/md_white_1000"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        tools:text="@tools:sample/lorem/random" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/artistImage"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="end"
+                android:layout_marginEnd="16dp"
+                android:elevation="10dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:shapeAppearance="@style/ShapeAppearance.Material3.Circle"
+                app:srcCompat="@drawable/default_artist_art" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </com.google.android.material.appbar.MaterialToolbar>
+
+    <!-- LAYER 4: The Dynamic Island Capsule Container -->
+    <FrameLayout
+        android:id="@+id/dynamicIslandBlur"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/bg_island_capsule"
+        android:elevation="16dp"
+        android:padding="16dp"
+        app:layout_constraintBottom_toTopOf="@+id/navigationBarGuideline"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Dynamic Island Header Row -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="8dp">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_centerVertical="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:id="@+id/islandDot"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:layout_marginEnd="6dp"
+                        android:background="@drawable/bg_island_capsule"
+                        android:backgroundTint="#FF3366" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/islandHeaderLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.1"
+                        android:text="DYNAMIC ISLAND"
+                        android:textColor="@color/md_white_1000"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Center Drag Handle Indicator -->
+                <View
+                    android:id="@+id/islandDragHandle"
+                    android:layout_width="36dp"
+                    android:layout_height="4dp"
+                    android:layout_centerInParent="true"
+                    android:background="@drawable/bg_island_capsule"
+                    android:backgroundTint="#66FFFFFF" />
+
+            </RelativeLayout>
+
+            <!-- Song Info Row: Favorite + Marquee Title & Artist + Menu -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp">
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/songFavourite"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_centerVertical="true"
+                    android:background="?attr/roundSelector"
+                    android:padding="10dp"
+                    app:srcCompat="@drawable/ic_favorite_border" />
+
+                <LinearLayout
+                    android:id="@+id/titleContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_centerInParent="true"
+                    android:layout_toEndOf="@id/songFavourite"
+                    android:layout_toStartOf="@id/playerMenu"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="marquee"
+                        android:gravity="center"
+                        android:marqueeRepeatLimit="marquee_forever"
+                        android:singleLine="true"
+                        android:textAppearance="@style/TextViewHeadline6"
+                        android:textColor="@color/md_white_1000"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        tools:text="@tools:sample/lorem/random" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:gravity="center"
+                            android:maxLines="1"
+                            android:textColor="@color/md_white_1000"
+                            android:textSize="13sp"
+                            tools:text="@tools:sample/lorem/random" />
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/hqBadge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:background="@drawable/bg_frosted_subcard"
+                            android:paddingHorizontal="4dp"
+                            android:paddingVertical="1dp"
+                            android:text="HQ"
+                            android:textColor="@color/md_white_1000"
+                            android:textSize="9sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/playerMenu"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:background="?attr/roundSelector"
+                    android:padding="10dp"
+                    app:srcCompat="@drawable/ic_more_vert" />
+            </RelativeLayout>
+
+            <!-- Seekbar & Timer Section -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical">
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/progressSlider"
+                    style="@style/Widget.Retro.Slider"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxHeight="3dp"
+                    tools:progress="40" />
+
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingHorizontal="4dp">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/songCurrentProgress"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentStart="true"
+                        android:singleLine="true"
+                        android:textColor="@color/md_white_1000"
+                        android:textSize="11sp"
+                        tools:text="01:28" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/songTotalTime"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:singleLine="true"
+                        android:textColor="@color/md_white_1000"
+                        android:textSize="11sp"
+                        tools:text="03:20" />
+                </RelativeLayout>
+            </LinearLayout>
+
+            <!-- Action Buttons Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingVertical="4dp">
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/repeatButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/roundSelector"
+                    android:padding="10dp"
+                    app:srcCompat="@drawable/ic_repeat" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/previousButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:background="?attr/roundSelector"
+                    android:padding="10dp"
+                    app:srcCompat="@drawable/ic_skip_previous" />
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/playPauseButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="20dp"
+                    android:layout_marginEnd="20dp"
+                    android:elevation="12dp"
+                    app:fabCustomSize="56dp"
+                    app:srcCompat="@drawable/ic_pause_white_64dp" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/nextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="16dp"
+                    android:background="?attr/roundSelector"
+                    android:padding="10dp"
+                    app:srcCompat="@drawable/ic_skip_next" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/shuffleButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/roundSelector"
+                    android:padding="10dp"
+                    app:srcCompat="@drawable/ic_shuffle" />
+            </LinearLayout>
+
+            <!-- Codec Info & Volume Bar Row -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:paddingTop="8dp">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/codecInfo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_centerVertical="true"
+                    android:background="@drawable/bg_frosted_subcard"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="3dp"
+                    android:text="FLAC • 24-bit / 96kHz"
+                    android:textColor="@color/md_white_1000"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="120dp"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:layout_marginEnd="4dp"
+                        app:srcCompat="@drawable/ic_volume_up"
+                        app:tint="@color/md_white_1000" />
+
+                    <FrameLayout
+                        android:id="@+id/volumeFragmentContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+            </RelativeLayout>
+
+        </LinearLayout>
+    </FrameLayout>
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/navigationBarGuideline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_end="0dp" />
+
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/cover_lyrics"
+        android:name="code.name.monkey.retromusic.fragments.player.CoverLyricsFragment"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:elevation="20dp"
+        app:layout_constraintBottom_toTopOf="@+id/dynamicIslandBlur"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

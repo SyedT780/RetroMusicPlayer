@@ -88,6 +88,7 @@ import code.name.monkey.retromusic.fragments.player.color.ColorFragment
 import code.name.monkey.retromusic.fragments.player.fit.FitFragment
 import code.name.monkey.retromusic.fragments.player.flat.FlatPlayerFragment
 import code.name.monkey.retromusic.fragments.player.full.FullPlayerFragment
+import code.name.monkey.retromusic.fragments.player.fullisland.FullIslandPlayerFragment
 import code.name.monkey.retromusic.fragments.player.gradient.GradientPlayerFragment
 import code.name.monkey.retromusic.fragments.player.material.MaterialFragment
 import code.name.monkey.retromusic.fragments.player.md3.MD3PlayerFragment
@@ -442,7 +443,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
                 navigationBarColor = paletteColor
                 setLightNavigationBar(isColorLight)
                 setLightStatusBar(isColorLight)
-            } else if (nowPlayingScreen == Full) {
+            } else if (nowPlayingScreen == Full || nowPlayingScreen == FullIsland) {
                 animateNavigationBarColor(paletteColor)
                 navigationBarColor = paletteColor
                 setLightNavigationBar(isColorLight)
@@ -585,6 +586,7 @@ abstract class AbsSlidingMusicPanelActivity : AbsMusicServiceActivity(),
             Fit -> FitFragment()
             Flat -> FlatPlayerFragment()
             Full -> FullPlayerFragment()
+            FullIsland -> FullIslandPlayerFragment()
             Plain -> PlainPlayerFragment()
             Simple -> SimplePlayerFragment()
             Material -> MaterialFragment()

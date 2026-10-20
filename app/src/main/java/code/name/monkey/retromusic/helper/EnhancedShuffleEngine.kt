@@ -14,6 +14,10 @@
 
 package code.name.monkey.retromusic.helper
 
+import android.content.SharedPreferences
+import androidx.core.content.edit
+import androidx.preference.PreferenceManager
+import code.name.monkey.retromusic.App
 import code.name.monkey.retromusic.model.Song
 import java.util.ArrayDeque
 import kotlin.random.Random
@@ -27,9 +31,17 @@ import kotlin.random.Random
  */
 object EnhancedShuffleEngine {
 
+    private const val KEY_DOMAIN_N = "enhanced_shuffle_domain_n"
+    private const val KEY_M_PLAYED = "enhanced_shuffle_m_played"
+    private const val KEY_U_UNPLAYED = "enhanced_shuffle_u_unplayed"
+    private const val KEY_S_UNPLAYED = "enhanced_shuffle_s_unplayed"
+    private const val KEY_S_PLAYED = "enhanced_shuffle_s_played"
+    private const val KEY_BITSET = "enhanced_shuffle_bitset"
+    private const val KEY_COOLDOWN = "enhanced_shuffle_cooldown"
+
     data class AttributeDescriptor(val artistId: Long, val albumId: Long = 0L)
 
-    // Persistent Macro-Cycle State (Preserved across reshuffles)
+    // Persistent Macro-Cycle State (Preserved across reshuffles and app restarts)
     private var bitset: LongArray = LongArray(0)
     private var domainN: Int = 0
     private var mPlayed: Int = 0
@@ -40,33 +52,119 @@ object EnhancedShuffleEngine {
     private var sPlayed: Long = 0L
     private var streamPointer: Int = 0
     private val cooldown = ArrayDeque<AttributeDescriptor>()
+    private var isStateRestored = false
+
+    private fun getPreferences(): SharedPreferences? {
+        return try {
+            PreferenceManager.getDefaultSharedPreferences(App.getContext())
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
+    private fun ensureStateRestored() {
+        if (!isStateRestored) {
+            restoreState()
+        }
+    }
 
     @Synchronized
-    fun getM(): Int = mPlayed
+    fun restoreState(prefs: SharedPreferences? = getPreferences()) {
+        val sp = prefs ?: return
+        val savedN = sp.getInt(KEY_DOMAIN_N, 0)
+        if (savedN > 0) {
+            domainN = savedN
+            mPlayed = sp.getInt(KEY_M_PLAYED, 0)
+            uUnplayed = sp.getInt(KEY_U_UNPLAYED, savedN)
+            sUnplayed = sp.getLong(KEY_S_UNPLAYED, 0L)
+            sPlayed = sp.getLong(KEY_S_PLAYED, 0L)
+
+            val bitsetStr = sp.getString(KEY_BITSET, "") ?: ""
+            if (bitsetStr.isNotEmpty()) {
+                val tokens = bitsetStr.split(",")
+                bitset = LongArray(tokens.size) { i -> tokens[i].toLongOrNull() ?: 0L }
+            } else {
+                val wordCount = (savedN + 63) / 64
+                bitset = LongArray(wordCount)
+            }
+
+            val cooldownStr = sp.getString(KEY_COOLDOWN, "") ?: ""
+            cooldown.clear()
+            if (cooldownStr.isNotEmpty()) {
+                val pairs = cooldownStr.split(",")
+                for (pair in pairs) {
+                    val parts = pair.split(":")
+                    if (parts.size == 2) {
+                        val artistId = parts[0].toLongOrNull() ?: continue
+                        val albumId = parts[1].toLongOrNull() ?: 0L
+                        cooldown.addLast(AttributeDescriptor(artistId, albumId))
+                    }
+                }
+            }
+        }
+        isStateRestored = true
+    }
 
     @Synchronized
-    fun getU(): Int = uUnplayed
+    fun saveState(prefs: SharedPreferences? = getPreferences()) {
+        val sp = prefs ?: return
+        val bitsetStr = bitset.joinToString(",")
+        val cooldownStr = cooldown.joinToString(",") { "${it.artistId}:${it.albumId}" }
+
+        sp.edit {
+            putInt(KEY_DOMAIN_N, domainN)
+            putInt(KEY_M_PLAYED, mPlayed)
+            putInt(KEY_U_UNPLAYED, uUnplayed)
+            putLong(KEY_S_UNPLAYED, sUnplayed)
+            putLong(KEY_S_PLAYED, sPlayed)
+            putString(KEY_BITSET, bitsetStr)
+            putString(KEY_COOLDOWN, cooldownStr)
+        }
+    }
 
     @Synchronized
-    fun getDomainSize(): Int = domainN
+    fun getM(): Int {
+        ensureStateRestored()
+        return mPlayed
+    }
 
     @Synchronized
-    fun getBitset(): LongArray = bitset.clone()
+    fun getU(): Int {
+        ensureStateRestored()
+        return uUnplayed
+    }
 
     @Synchronized
-    fun getCooldown(): List<AttributeDescriptor> = cooldown.toList()
+    fun getDomainSize(): Int {
+        ensureStateRestored()
+        return domainN
+    }
+
+    @Synchronized
+    fun getBitset(): LongArray {
+        ensureStateRestored()
+        return bitset.clone()
+    }
+
+    @Synchronized
+    fun getCooldown(): List<AttributeDescriptor> {
+        ensureStateRestored()
+        return cooldown.toList()
+    }
 
     /**
      * Resets persistent macro-cycle state manually (MacroCycleReset / Procedure C).
      */
     @Synchronized
     fun macroCycleReset(n: Int = domainN) {
+        ensureStateRestored()
         domainN = n
         val wordCount = if (n > 0) (n + 63) / 64 else 0
         bitset = LongArray(wordCount)
         mPlayed = 0
         uUnplayed = n
         // Critical rule: Do not clear cooldown (preserving last C tracks prevents boundary collisions)
+        saveState()
     }
 
     /**
@@ -265,6 +363,8 @@ object EnhancedShuffleEngine {
         val n = listToShuffle.size
         if (n <= 1) return
 
+        ensureStateRestored()
+
         // Initialize or reset persistent macro-cycle state if domain size changed or all tracks played
         if (domainN != n || uUnplayed == 0) {
             macroCycleReset(n)
@@ -405,6 +505,7 @@ object EnhancedShuffleEngine {
 
         listToShuffle.clear()
         listToShuffle.addAll(result)
+        saveState()
     }
 
     private fun commitTrackToBitset(trackIdx: Int) {

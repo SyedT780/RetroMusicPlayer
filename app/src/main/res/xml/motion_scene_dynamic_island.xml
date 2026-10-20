@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MotionScene
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:motion="http://schemas.android.com/apk/res-auto">
+
+    <!-- Transition: Expanded <-> Compact via Drag/Swipe -->
+    <Transition
+        motion:constraintSetStart="@+id/expanded"
+        motion:constraintSetEnd="@+id/compact"
+        motion:duration="380">
+
+        <OnSwipe
+            motion:dragDirection="dragDown"
+            motion:touchAnchorId="@+id/islandDragHandle"
+            motion:touchAnchorSide="bottom" />
+    </Transition>
+
+    <!-- EXPANDED STATE (Full Player Mode) -->
+    <ConstraintSet android:id="@+id/expanded">
+        <Constraint
+            android:id="@+id/islandContentWrapper"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            motion:layout_constraintTop_toTopOf="parent"
+            motion:layout_constraintBottom_toBottomOf="parent" />
+
+        <Constraint
+            android:id="@+id/expandedControlsGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:alpha="1.0"
+            motion:visibilityMode="normal" />
+
+        <Constraint
+            android:id="@+id/compactEqualizer"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:alpha="0.0"
+            motion:visibilityMode="ignore" />
+    </ConstraintSet>
+
+    <!-- COMPACT STATE (Mini Dynamic Pill Mode) -->
+    <ConstraintSet android:id="@+id/compact">
+        <Constraint
+            android:id="@+id/islandContentWrapper"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            motion:layout_constraintTop_toTopOf="parent"
+            motion:layout_constraintBottom_toBottomOf="parent" />
+
+        <Constraint
+            android:id="@+id/expandedControlsGroup"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:alpha="0.0"
+            android:visibility="gone" />
+
+        <Constraint
+            android:id="@+id/compactEqualizer"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:alpha="1.0"
+            motion:visibilityMode="normal"
+            motion:layout_constraintTop_toTopOf="parent"
+            motion:layout_constraintBottom_toBottomOf="parent"
+            motion:layout_constraintEnd_toStartOf="@+id/compactMiniPlayPause" />
+    </ConstraintSet>
+
+</MotionScene>
