@@ -90,7 +90,21 @@
     <fragment
         android:id="@+id/nowPlayingSettingsFragment"
         android:name="code.name.monkey.retromusic.fragments.settings.NowPlayingSettingsFragment"
-        android:label="Now Playing" />
+        android:label="Now Playing">
+
+        <action
+            android:id="@+id/action_nowPlayingSettingsFragment_to_embedLyricsFragment"
+            app:destination="@id/embedLyricsFragment"
+            app:enterAnim="@anim/retro_fragment_open_enter"
+            app:exitAnim="@anim/retro_fragment_open_exit"
+            app:popEnterAnim="@anim/retro_fragment_close_enter"
+            app:popExitAnim="@anim/retro_fragment_close_exit" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/embedLyricsFragment"
+        android:name="code.name.monkey.retromusic.fragments.lyrics.EmbedLyricsFragment"
+        android:label="@string/embed_lyrics_title" />
 
     <fragment
         android:id="@+id/otherSettingsFragment"

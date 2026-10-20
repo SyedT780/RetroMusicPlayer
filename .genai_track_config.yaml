@@ -1,0 +1,14 @@
+# GenAI Tracking — Local Workspace Configuration
+# This file lets teams add EXTRA exclude patterns on top of whatever
+# the IA remote server enforces — but ONLY if the remote policy
+# 'allow_workspace_exclude' is set to true.
+#
+# You cannot override IA options (othermeta_injection, json_logging) or
+# IA policy (dita_only, content_dir_only) from this file.
+#
+# Patterns use gitignore/glob syntax via the 'pathspec' library.
+
+tracking:
+  # Additional files/patterns to exclude from tracking
+  # These are unioned with any IA-enforced exclude patterns.
+  exclude: []

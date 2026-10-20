@@ -122,4 +122,16 @@
             app:icon="@drawable/ic_blur_on"
             app:showSeekBarValue="true" />
     </code.name.monkey.appthemehelper.common.prefs.supportv7.ATEPreferenceCategory>
+
+    <code.name.monkey.appthemehelper.common.prefs.supportv7.ATEPreferenceCategory
+        android:layout="@layout/preference_category_title"
+        android:title="@string/pref_header_lyrics_management">
+
+        <Preference
+            android:key="embed_lyrics"
+            android:layout="@layout/list_item_view"
+            android:summary="@string/embed_lyrics_summary"
+            android:title="@string/embed_lyrics_title"
+            app:icon="@drawable/ic_lyrics" />
+    </code.name.monkey.appthemehelper.common.prefs.supportv7.ATEPreferenceCategory>
 </androidx.preference.PreferenceScreen>

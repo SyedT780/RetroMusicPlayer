@@ -537,4 +537,21 @@
     <string name="try_retro_music_premium" translatable="false" />
     <string name="listing_files" translatable="false" />
 
+    <!-- Lyrics Management & Embedding -->
+    <string name="pref_header_lyrics_management">Lyrics Management</string>
+    <string name="embed_lyrics_title">Embed lyrics to files</string>
+    <string name="embed_lyrics_summary">Scan library, auto-fetch synced lyrics from LRCLIB, and embed them directly into audio tags.</string>
+    <string name="total_scanned">Total Scanned</string>
+    <string name="already_synced">Already Synced</string>
+    <string name="synced_embedded">Synced Embedded</string>
+    <string name="awaiting_decision">Awaiting Decision</string>
+    <string name="not_found_errors">Not Found / Errors</string>
+    <string name="start_sync">Start Sync</string>
+    <string name="cancel_sync">Cancel Sync</string>
+    <string name="storage_permission_required">Storage Permission Required</string>
+    <string name="storage_permission_summary">All files access or write storage permission is required to embed lyrics directly into your audio files.</string>
+    <string name="grant_permission">Grant Permission</string>
+    <string name="disambiguation_title">Select Lyrics Version</string>
+    <string name="skip_track">Skip Track</string>
+
 </resources>

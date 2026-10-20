@@ -180,6 +180,13 @@ private val viewModules = module {
             genre
         )
     }
+
+    viewModel {
+        code.name.monkey.retromusic.lyrics.EmbedLyricsViewModel(
+            get(),
+            get()
+        )
+    }
 }
 
 val appModules = listOf(mainModule, dataModule, autoModule, viewModules, networkModule, roomModule)

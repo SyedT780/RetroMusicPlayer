@@ -17,6 +17,7 @@ package code.name.monkey.retromusic.fragments.settings
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.View
+import androidx.navigation.fragment.findNavController
 import androidx.preference.Preference
 import androidx.preference.TwoStatePreference
 import code.name.monkey.retromusic.*
@@ -74,5 +75,13 @@ class NowPlayingSettingsFragment : AbsSettingsFragment(),
             ALBUM_COVER_STYLE -> updateAlbumCoverStyleSummary()
             CIRCULAR_ALBUM_ART, CAROUSEL_EFFECT -> invalidateSettings()
         }
+    }
+
+    override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        if (preference.key == "embed_lyrics") {
+            findNavController().navigate(R.id.action_nowPlayingSettingsFragment_to_embedLyricsFragment)
+            return true
+        }
+        return super.onPreferenceTreeClick(preference)
     }
 }
