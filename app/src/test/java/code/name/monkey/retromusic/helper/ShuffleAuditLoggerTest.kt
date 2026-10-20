@@ -15,6 +15,7 @@
 package code.name.monkey.retromusic.helper
 
 import code.name.monkey.retromusic.model.Song
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -148,5 +149,40 @@ class ShuffleAuditLoggerTest {
 
         assertTrue("Report missing total shuffles count for varying sizes", report.contains("Total Shuffles: 2"))
         assertTrue("Report missing Files count for latest run", report.contains("Files: 25"))
+    }
+
+    @Test
+    fun testAuditSummaryMetricsExtraction() {
+        val library = (0L..19L).map { i ->
+            val artistId = i % 4
+            createDummySong(id = i, artistId = artistId, albumId = artistId)
+        }.toMutableList()
+
+        val targetDir = tempFolder.newFolder("audit_test_summary")
+
+        for (sIdx in 0 until 3) {
+            val shuffled = ArrayList(library)
+            EnhancedShuffleEngine.shuffle(shuffled, current = -1, customSeed = 100L + sIdx * 50L)
+            ShuffleAuditLogger.logShuffle(shuffled, isEnhancedShuffle = true, customDirectory = targetDir)
+        }
+
+        val summary = ShuffleAuditLogger.getAuditSummary()
+        assertEquals(3, summary.totalShuffles)
+        assertEquals(20, summary.totalTracks)
+        assertEquals(3, summary.rounds.size)
+
+        val round1 = summary.rounds[0]
+        assertEquals(1, round1.roundNumber)
+        assertTrue(round1.isEnhanced)
+        assertEquals(20, round1.trackCount)
+
+        val round2 = summary.rounds[1]
+        assertEquals(2, round2.roundNumber)
+        assertTrue(round2.isEnhanced)
+
+        ShuffleAuditLogger.resetHistory()
+        val emptySummary = ShuffleAuditLogger.getAuditSummary()
+        assertEquals(0, emptySummary.totalShuffles)
+        assertEquals(0, emptySummary.rounds.size)
     }
 }

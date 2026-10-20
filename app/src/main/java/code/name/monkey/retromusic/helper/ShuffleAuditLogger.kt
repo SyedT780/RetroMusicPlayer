@@ -38,11 +38,192 @@ object ShuffleAuditLogger {
         val isEnhanced: Boolean
     )
 
+    data class ShuffleRoundMetrics(
+        val roundNumber: Int,
+        val isEnhanced: Boolean,
+        val trackCount: Int,
+        val artistCollisions: Int,
+        val sameSlotMatches: Int,
+        val sameSlotTotal: Int,
+        val sameSlotPct: Double,
+        val repeatedBigramPairs: Int,
+        val repeatedBigramTotal: Int,
+        val repeatedBigramPct: Double,
+        val repetitivenessScore: Double
+    )
+
+    data class ShuffleAuditSummary(
+        val totalShuffles: Int,
+        val activeMode: String,
+        val totalTracks: Int,
+        val cumulativeSlotMatches: Int,
+        val cumulativeSlotPct: Double,
+        val cumulativeBigramPairs: Int,
+        val cumulativeBigramPct: Double,
+        val rounds: List<ShuffleRoundMetrics>,
+        val rawReportText: String
+    )
+
     private val shuffleHistory = mutableListOf<ShuffleRun>()
 
     @Synchronized
     fun resetHistory() {
         shuffleHistory.clear()
+    }
+
+    @Synchronized
+    fun getAuditSummary(): ShuffleAuditSummary {
+        val m = shuffleHistory.size
+        if (m == 0) {
+            return ShuffleAuditSummary(
+                totalShuffles = 0,
+                activeMode = "None",
+                totalTracks = 0,
+                cumulativeSlotMatches = 0,
+                cumulativeSlotPct = 0.0,
+                cumulativeBigramPairs = 0,
+                cumulativeBigramPct = 0.0,
+                rounds = emptyList(),
+                rawReportText = ""
+            )
+        }
+
+        val lastRun = shuffleHistory.last()
+        val n = lastRun.descriptors.size
+
+        val hasEnhanced = shuffleHistory.any { it.isEnhanced }
+        val hasNormal = shuffleHistory.any { !it.isEnhanced }
+
+        val modeStr = when {
+            hasEnhanced && hasNormal -> "Mixed (${if (lastRun.isEnhanced) "Enhanced" else "Normal"})"
+            hasEnhanced -> "Enhanced (Anti-Clustering)"
+            else -> "Normal (Fisher-Yates)"
+        }
+
+        val roundMetricsList = mutableListOf<ShuffleRoundMetrics>()
+
+        for (i in 0 until m) {
+            val run = shuffleHistory[i].descriptors
+            val runIsEnhanced = shuffleHistory[i].isEnhanced
+            val runSize = run.size
+            var collisions = 0
+            for (c in 0 until runSize - 1) {
+                if (run[c].artistId == run[c + 1].artistId) {
+                    collisions++
+                }
+            }
+
+            if (i == 0) {
+                roundMetricsList.add(
+                    ShuffleRoundMetrics(
+                        roundNumber = 1,
+                        isEnhanced = runIsEnhanced,
+                        trackCount = runSize,
+                        artistCollisions = collisions,
+                        sameSlotMatches = 0,
+                        sameSlotTotal = runSize,
+                        sameSlotPct = 0.0,
+                        repeatedBigramPairs = 0,
+                        repeatedBigramTotal = if (runSize > 1) runSize - 1 else 1,
+                        repeatedBigramPct = 0.0,
+                        repetitivenessScore = 0.0
+                    )
+                )
+            } else {
+                val prevRun = shuffleHistory[i - 1].descriptors
+                val compareN = minOf(prevRun.size, runSize)
+
+                var posMatches = 0
+                for (c in 0 until compareN) {
+                    if (prevRun[c].id == run[c].id) {
+                        posMatches++
+                    }
+                }
+                val posPct = if (runSize > 0) (posMatches.toDouble() / runSize) * 100.0 else 0.0
+
+                val prevPairs = HashSet<Pair<Long, Long>>()
+                for (c in 0 until prevRun.size - 1) {
+                    prevPairs.add(Pair(prevRun[c].id, prevRun[c + 1].id))
+                }
+
+                var pairMatches = 0
+                for (c in 0 until runSize - 1) {
+                    if (prevPairs.contains(Pair(run[c].id, run[c + 1].id))) {
+                        pairMatches++
+                    }
+                }
+                val pairTotal = if (runSize > 1) runSize - 1 else 1
+                val pairPct = if (runSize > 1) (pairMatches.toDouble() / pairTotal) * 100.0 else 0.0
+
+                val score = (posPct * 0.5) + (pairPct * 0.5)
+
+                roundMetricsList.add(
+                    ShuffleRoundMetrics(
+                        roundNumber = i + 1,
+                        isEnhanced = runIsEnhanced,
+                        trackCount = runSize,
+                        artistCollisions = collisions,
+                        sameSlotMatches = posMatches,
+                        sameSlotTotal = runSize,
+                        sameSlotPct = posPct,
+                        repeatedBigramPairs = pairMatches,
+                        repeatedBigramTotal = pairTotal,
+                        repeatedBigramPct = pairPct,
+                        repetitivenessScore = score
+                    )
+                )
+            }
+        }
+
+        val lastIdx = m - 1
+        val targetRun = shuffleHistory[lastIdx].descriptors
+        val targetN = targetRun.size
+        val targetPairs = (0 until targetN - 1).map { c -> Pair(targetRun[c].id, targetRun[c + 1].id) }
+
+        val allPriorPairs = HashSet<Pair<Long, Long>>()
+        val cumulativeSlotCollisions = BooleanArray(targetN)
+
+        for (priorIdx in 0 until lastIdx) {
+            val priorRun = shuffleHistory[priorIdx].descriptors
+            val compareN = minOf(priorRun.size, targetN)
+
+            for (c in 0 until compareN) {
+                if (priorRun[c].id == targetRun[c].id) {
+                    cumulativeSlotCollisions[c] = true
+                }
+            }
+
+            val priorPSet = (0 until priorRun.size - 1).mapTo(HashSet()) { c -> Pair(priorRun[c].id, priorRun[c + 1].id) }
+            allPriorPairs.addAll(priorPSet)
+        }
+
+        var totalSeenPos = 0
+        for (hit in cumulativeSlotCollisions) {
+            if (hit) totalSeenPos++
+        }
+        val totalSeenPosPct = if (targetN > 0) (totalSeenPos.toDouble() / targetN) * 100.0 else 0.0
+
+        var totalSeenPairs = 0
+        for (pair in targetPairs) {
+            if (allPriorPairs.contains(pair)) {
+                totalSeenPairs++
+            }
+        }
+        val totalSeenPairsPct = if (targetN > 1) (totalSeenPairs.toDouble() / (targetN - 1)) * 100.0 else 0.0
+
+        val reportText = generateReportText(lastRun.isEnhanced)
+
+        return ShuffleAuditSummary(
+            totalShuffles = m,
+            activeMode = modeStr,
+            totalTracks = n,
+            cumulativeSlotMatches = totalSeenPos,
+            cumulativeSlotPct = totalSeenPosPct,
+            cumulativeBigramPairs = totalSeenPairs,
+            cumulativeBigramPct = totalSeenPairsPct,
+            rounds = roundMetricsList,
+            rawReportText = reportText
+        )
     }
 
     @Synchronized

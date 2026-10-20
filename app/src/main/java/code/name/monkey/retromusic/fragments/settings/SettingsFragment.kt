@@ -60,6 +60,7 @@ class SettingsFragment : Fragment(R.layout.fragment_settings), ColorCallback {
             R.id.imageSettingFragment -> R.string.pref_header_images
             R.id.nowPlayingSettingsFragment -> R.string.now_playing
             R.id.otherSettingsFragment -> R.string.others
+            R.id.shuffleHistoryFragment -> R.string.shuffle_history_title
             R.id.personalizeSettingsFragment -> R.string.personalize
             R.id.themeSettingsFragment -> R.string.general_settings_title
             R.id.aboutActivity -> R.string.action_about

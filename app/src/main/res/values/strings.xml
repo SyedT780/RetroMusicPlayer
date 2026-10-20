@@ -297,6 +297,13 @@
     <string name="pref_keep_pause_on_zero_volume_title">Pause on zero</string>
     <string name="pref_enhanced_shuffle_title">Enhanced shuffling</string>
     <string name="pref_enhanced_shuffle_summary">Use anti-clustering algorithm to prevent consecutive songs from the same artist or album</string>
+    <string name="pref_shuffle_history_title">Shuffle history &amp; audit</string>
+    <string name="pref_shuffle_history_summary">View statistical randomness reports and round-by-round repetitiveness metrics</string>
+    <string name="shuffle_history_title">Shuffle History</string>
+    <string name="shuffle_history_clear">Clear History</string>
+    <string name="shuffle_history_view_report">View Raw Report</string>
+    <string name="shuffle_history_empty_title">No Shuffle History</string>
+    <string name="shuffle_history_empty_text">Shuffle your queue to generate randomness audit metrics and round-by-round history.</string>
     <string name="pref_keep_screen_on_summary">Keep in mind that enabling this feature may affect battery life</string>
     <string name="pref_keep_screen_on_title">Keep the screen on</string>
     <string name="pref_show_when_locked_summary">Requires an app restart to take effect. The player must be on foreground before locking for this feature to work</string>

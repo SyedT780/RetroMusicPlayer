@@ -95,7 +95,21 @@
     <fragment
         android:id="@+id/otherSettingsFragment"
         android:name="code.name.monkey.retromusic.fragments.settings.OtherSettingsFragment"
-        android:label="Other" />
+        android:label="Other">
+
+        <action
+            android:id="@+id/action_otherSettingsFragment_to_shuffleHistoryFragment"
+            app:destination="@id/shuffleHistoryFragment"
+            app:enterAnim="@anim/retro_fragment_open_enter"
+            app:exitAnim="@anim/retro_fragment_open_exit"
+            app:popEnterAnim="@anim/retro_fragment_close_enter"
+            app:popExitAnim="@anim/retro_fragment_close_exit" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/shuffleHistoryFragment"
+        android:name="code.name.monkey.retromusic.fragments.other.ShuffleHistoryFragment"
+        android:label="@string/shuffle_history_title" />
 
     <fragment
         android:id="@+id/personalizeSettingsFragment"

@@ -18,6 +18,7 @@ import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import androidx.navigation.fragment.findNavController
 import androidx.preference.Preference
 import code.name.monkey.appthemehelper.common.prefs.supportv7.ATEListPreference
 import code.name.monkey.retromusic.LANGUAGE_NAME
@@ -58,6 +59,13 @@ class OtherSettingsFragment : AbsSettingsFragment() {
             libraryViewModel.forceReload(HomeSections)
             true
         }
+
+        val shuffleHistoryPref: Preference? = findPreference("shuffle_history")
+        shuffleHistoryPref?.setOnPreferenceClickListener {
+            findNavController().navigate(R.id.action_otherSettingsFragment_to_shuffleHistoryFragment)
+            true
+        }
+
         val languagePreference: Preference? = findPreference(LANGUAGE_NAME)
         languagePreference?.setOnPreferenceChangeListener { prefs, newValue ->
             setSummary(prefs, newValue)
