@@ -118,9 +118,11 @@ class AlbumCoverPagerAdapter(
             savedInstanceState: Bundle?
         ): View? {
             val view = inflater.inflate(getLayoutWithPlayerTheme(), container, false)
-            view.setOnClickListener {
-                if (mainActivity.getBottomSheetBehavior().state == STATE_EXPANDED) {
-                    showLyricsDialog()
+            if (PreferenceUtil.nowPlayingScreen != FullIsland) {
+                view.setOnClickListener {
+                    if (mainActivity.getBottomSheetBehavior().state == STATE_EXPANDED) {
+                        showLyricsDialog()
+                    }
                 }
             }
             return view

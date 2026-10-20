@@ -15,6 +15,7 @@ package code.name.monkey.retromusic.fragments.player.fullisland
 
 import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.AnimatedVectorDrawable
@@ -42,19 +43,22 @@ import code.name.monkey.retromusic.extensions.hide
 import code.name.monkey.retromusic.extensions.setArtistLinks
 import code.name.monkey.retromusic.extensions.show
 import code.name.monkey.retromusic.extensions.whichFragment
+import code.name.monkey.retromusic.fragments.MusicSeekSkipTouchListener
 import code.name.monkey.retromusic.fragments.base.AbsPlayerFragment
 import code.name.monkey.retromusic.fragments.base.goToAlbum
-import code.name.monkey.retromusic.fragments.base.goToArtist
 import code.name.monkey.retromusic.fragments.base.goToArtistByName
 import code.name.monkey.retromusic.fragments.player.CoverLyricsFragment
 import code.name.monkey.retromusic.fragments.player.PlayerAlbumCoverFragment
 import code.name.monkey.retromusic.glide.RetroGlideExtension
-import code.name.monkey.retromusic.glide.RetroGlideExtension.artistImageOptions
+import code.name.monkey.retromusic.glide.RetroGlideExtension.songCoverOptions
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.MusicProgressViewUpdateHelper
 import code.name.monkey.retromusic.helper.PlayPauseButtonOnClickHandler
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.model.lyrics.AbsSynchronizedLyrics
+import code.name.monkey.retromusic.model.lyrics.Lyrics
 import code.name.monkey.retromusic.service.MusicService
+import code.name.monkey.retromusic.util.LyricUtil
 import code.name.monkey.retromusic.util.MusicUtil
 import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.color.FullIslandColorProcessor
@@ -73,11 +77,15 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
     private val binding get() = _binding!!
 
     private var lastColor: Int = 0
+    private var lastAccentColor: Int = Color.WHITE
     override val paletteColor: Int
         get() = lastColor
 
     private lateinit var progressViewUpdateHelper: MusicProgressViewUpdateHelper
     private var playingQueueAdapter: PlayingQueueAdapter? = null
+
+    private var lyrics: Lyrics? = null
+    private var activeLineIndex: Int = -2
 
     override fun playerToolbar(): Toolbar {
         return binding.playerToolbar
@@ -93,7 +101,7 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         _binding = FragmentFullIslandBinding.bind(view)
 
         setUpPlayerToolbar()
-        setupArtist()
+        setupHeaderButtons()
         setupIslandInteractions()
         setUpMusicControllers()
 
@@ -111,8 +119,9 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         }
     }
 
-    private fun setupArtist() {
-        binding.artistImage.setOnClickListener { goToArtist(mainActivity) }
+    private fun setupHeaderButtons() {
+        binding.albumButton.setOnClickListener { goToAlbum(requireActivity()) }
+        binding.lyricsButton.setOnClickListener { toggleLyricsOverlay() }
     }
 
     private fun setupIslandInteractions() {
@@ -126,8 +135,30 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         if (targetVisibility) {
             setupQueueAdapter()
             binding.queueIslandContainer.show()
+            binding.upNextIcon.animate().rotation(90f).setDuration(250).start()
         } else {
             binding.queueIslandContainer.hide()
+            binding.upNextIcon.animate().rotation(0f).setDuration(250).start()
+        }
+    }
+
+    private fun toggleLyricsOverlay(show: Boolean? = null) {
+        if (lyrics !is AbsSynchronizedLyrics || !(lyrics as AbsSynchronizedLyrics).isSynchronized) {
+            return
+        }
+        val targetVisibility = show ?: !binding.lyricsIslandContainer.isVisible
+        if (targetVisibility) {
+            binding.lyricsIslandContainer.show()
+            binding.lyricsButton.backgroundTintList = ColorStateList.valueOf(lastAccentColor)
+            binding.lyricsButton.animate().scaleX(1.15f).scaleY(1.15f).setDuration(150).withEndAction {
+                if (_binding != null) {
+                    binding.lyricsButton.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
+                }
+            }.start()
+            updateLyricsDisplay(MusicPlayerRemote.songProgressMillis)
+        } else {
+            binding.lyricsIslandContainer.hide()
+            binding.lyricsButton.backgroundTintList = null
         }
     }
 
@@ -153,8 +184,13 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun setUpMusicControllers() {
         binding.playPauseButton.setOnClickListener(PlayPauseButtonOnClickHandler())
+        binding.nextButton.setOnTouchListener(MusicSeekSkipTouchListener(requireActivity(), true))
+        binding.previousButton.setOnTouchListener(MusicSeekSkipTouchListener(requireActivity(), false))
+        binding.nextButton.setOnClickListener { MusicPlayerRemote.playNextSong() }
+        binding.previousButton.setOnClickListener { MusicPlayerRemote.playPreviousSong() }
         binding.shuffleButton.setOnClickListener { MusicPlayerRemote.toggleShuffleMode() }
         repeatButton().setOnClickListener { MusicPlayerRemote.cycleRepeatMode() }
         setupFavourite()
@@ -176,15 +212,21 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
             popupMenu.setOnMenuItemClickListener(this)
             popupMenu.inflate(R.menu.menu_player)
             popupMenu.menu.findItem(R.id.action_toggle_favorite).isVisible = false
-            popupMenu.menu.findItem(R.id.action_toggle_lyrics).isChecked = PreferenceUtil.showLyrics
+            popupMenu.menu.findItem(R.id.action_toggle_lyrics).isChecked = binding.lyricsIslandContainer.isVisible
             popupMenu.show()
         }
     }
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
-        if (item.itemId == R.id.now_playing) {
-            toggleQueueIsland()
-            return true
+        when (item.itemId) {
+            R.id.now_playing -> {
+                toggleQueueIsland()
+                return true
+            }
+            R.id.action_toggle_lyrics, R.id.action_go_to_lyrics -> {
+                toggleLyricsOverlay()
+                return true
+            }
         }
         return super.onMenuItemClick(item)
     }
@@ -215,6 +257,53 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         )
         binding.songTotalTime.text = MusicUtil.getReadableDurationString(total.toLong())
         binding.songCurrentProgress.text = MusicUtil.getReadableDurationString(progress.toLong())
+
+        updateLyricsDisplay(progress)
+    }
+
+    private fun findActiveLineIndex(timeMs: Int, syncLyrics: AbsSynchronizedLyrics): Int {
+        val count = syncLyrics.lineCount
+        if (count == 0) return -1
+        var active = -1
+        var low = 0
+        var high = count - 1
+        while (low <= high) {
+            val mid = (low + high) / 2
+            if (syncLyrics.getLineTime(mid) <= timeMs + 500) {
+                active = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        return active
+    }
+
+    private fun updateLyricsDisplay(progressMs: Int) {
+        if (_binding == null || !binding.lyricsIslandContainer.isVisible || lyrics !is AbsSynchronizedLyrics) return
+        val syncLyrics = lyrics as AbsSynchronizedLyrics
+        val count = syncLyrics.lineCount
+        if (count == 0) return
+
+        val idx = findActiveLineIndex(progressMs, syncLyrics)
+        if (idx != activeLineIndex) {
+            activeLineIndex = idx
+            val prevText = if (idx > 0) syncLyrics.getLineText(idx - 1) else "—"
+            val activeText = if (idx in 0 until count) syncLyrics.getLineText(idx) else "—"
+            val nextText = if (idx + 1 in 0 until count) syncLyrics.getLineText(idx + 1) else "—"
+
+            binding.lyricsPrevLine.text = prevText
+            binding.lyricsActiveLine.text = "\"$activeText\""
+            binding.lyricsNextLine.text = nextText
+
+            binding.lyricsActiveLine.alpha = 0f
+            binding.lyricsActiveLine.translationY = 6f
+            binding.lyricsActiveLine.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(350)
+                .start()
+        }
     }
 
     override fun onShow() {}
@@ -233,6 +322,7 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
     }
 
     fun applyPalette(palette: IslandPalette) {
+        lastAccentColor = palette.accentColor
         val currentBgColor = binding.ambientGlow.backgroundTintList?.defaultColor ?: Color.TRANSPARENT
         ValueAnimator.ofObject(ArgbEvaluator(), currentBgColor, palette.bgDark).apply {
             duration = 450
@@ -262,6 +352,10 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         binding.closeQueueButton.imageTintList = ColorStateList.valueOf(palette.textPrimary)
 
         binding.upNextIcon.imageTintList = ColorStateList.valueOf(palette.accentColor)
+
+        if (binding.lyricsIslandContainer.isVisible) {
+            binding.lyricsButton.backgroundTintList = ColorStateList.valueOf(palette.accentColor)
+        }
 
         binding.playPauseButton.backgroundTintList = ColorStateList.valueOf(palette.fabColor)
         binding.playPauseButton.imageTintList = ColorStateList.valueOf(palette.fabIconColor)
@@ -339,14 +433,14 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        updateArtistImage()
+        updateAlbumImage()
         updateLabel()
         updateSong()
     }
 
     override fun onPlayingMetaChanged() {
         super.onPlayingMetaChanged()
-        updateArtistImage()
+        updateAlbumImage()
         updateLabel()
         updateSong()
     }
@@ -371,18 +465,39 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         }
         updatePlayPauseState()
         updateIsFavoriteIcon()
+        updateLyrics()
     }
 
-    private fun updateArtistImage() {
-        libraryViewModel.artist(MusicPlayerRemote.currentSong.artistId)
-            .observe(viewLifecycleOwner) { artist ->
-                if (artist.id != -1L) {
-                    Glide.with(requireActivity())
-                        .load(RetroGlideExtension.getArtistModel(artist))
-                        .artistImageOptions(artist)
-                        .into(binding.artistImage)
+    private fun updateLyrics() {
+        lyrics = null
+        activeLineIndex = -2
+        lifecycleScope.launch(Dispatchers.IO) {
+            val song = MusicPlayerRemote.currentSong
+            lyrics = try {
+                val lrcFile = LyricUtil.getSyncedLyricsFile(song)
+                val data = LyricUtil.getStringFromLrc(lrcFile)
+                Lyrics.parse(song, data.ifEmpty { LyricUtil.getEmbeddedSyncedLyrics(song.data) })
+            } catch (e: Exception) {
+                null
+            }
+            withContext(Dispatchers.Main) {
+                if (_binding == null) return@withContext
+                val isSyncedAvailable = lyrics is AbsSynchronizedLyrics && (lyrics as AbsSynchronizedLyrics).isSynchronized
+                binding.lyricsButton.isEnabled = isSyncedAvailable
+                binding.lyricsButton.alpha = if (isSyncedAvailable) 1.0f else 0.3f
+                if (!isSyncedAvailable) {
+                    toggleLyricsOverlay(false)
                 }
             }
+        }
+    }
+
+    private fun updateAlbumImage() {
+        val song = MusicPlayerRemote.currentSong
+        Glide.with(requireActivity())
+            .load(RetroGlideExtension.getSongModel(song))
+            .songCoverOptions(song)
+            .into(binding.albumButton)
     }
 
     override fun onQueueChanged() {

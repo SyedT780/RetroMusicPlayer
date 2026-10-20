@@ -63,14 +63,14 @@
                 android:id="@+id/upNextPill"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="12dp"
+                android:layout_marginEnd="8dp"
                 android:background="@drawable/bg_island_capsule"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingHorizontal="12dp"
                 android:paddingVertical="8dp"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toStartOf="@+id/artistImage"
+                app:layout_constraintEnd_toStartOf="@+id/lyricsButton"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent">
 
@@ -95,101 +95,194 @@
                     tools:text="@tools:sample/lorem/random" />
             </LinearLayout>
 
+            <!-- Lyrics Toggle Button -->
             <com.google.android.material.imageview.ShapeableImageView
-                android:id="@+id/artistImage"
+                android:id="@+id/lyricsButton"
                 android:layout_width="36dp"
                 android:layout_height="36dp"
-                android:layout_gravity="end"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/bg_frosted_subcard"
+                android:elevation="10dp"
+                android:padding="8dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@+id/albumButton"
+                app:layout_constraintTop_toTopOf="parent"
+                app:shapeAppearance="@style/ShapeAppearance.Material3.Circle"
+                app:srcCompat="@drawable/ic_lyrics"
+                app:tint="@color/md_white_1000" />
+
+            <!-- Album Cover Thumbnail Button (Replaces artist button) -->
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/albumButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:layout_marginEnd="16dp"
                 android:elevation="10dp"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent"
                 app:shapeAppearance="@style/ShapeAppearance.Material3.Circle"
-                app:srcCompat="@drawable/default_artist_art" />
+                app:srcCompat="@drawable/default_album_art" />
         </androidx.constraintlayout.widget.ConstraintLayout>
 
     </com.google.android.material.appbar.MaterialToolbar>
 
-    <!-- LAYER 3.5: Queue Island Container -->
-    <FrameLayout
-        android:id="@+id/queueIslandContainer"
+    <!-- LAYER 3.5: Middle Islands Container (Queue Island & Frameless Lyrics Overlay) -->
+    <LinearLayout
+        android:id="@+id/middleIslandsContainer"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="16dp"
         android:layout_marginEnd="16dp"
         android:layout_marginTop="8dp"
         android:layout_marginBottom="12dp"
-        android:background="@drawable/bg_island_capsule"
-        android:elevation="18dp"
-        android:padding="16dp"
-        android:visibility="gone"
+        android:orientation="vertical"
         app:layout_constraintBottom_toTopOf="@+id/dynamicIslandBlur"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/playerToolbar"
-        tools:visibility="visible">
+        app:layout_constraintTop_toBottomOf="@+id/playerToolbar">
 
-        <LinearLayout
+        <!-- Queue Island Container -->
+        <FrameLayout
+            android:id="@+id/queueIslandContainer"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical">
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/bg_island_capsule"
+            android:elevation="18dp"
+            android:padding="16dp"
+            android:visibility="gone"
+            tools:visibility="visible">
 
-            <!-- Queue Header Row -->
-            <RelativeLayout
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingBottom="8dp">
+                android:layout_height="match_parent"
+                android:orientation="vertical">
 
-                <LinearLayout
+                <!-- Queue Header Row -->
+                <RelativeLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_alignParentStart="true"
-                    android:layout_toStartOf="@id/closeQueueButton"
-                    android:layout_centerVertical="true"
-                    android:orientation="vertical">
+                    android:paddingBottom="8dp">
 
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/queueTitle"
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentStart="true"
+                        android:layout_toStartOf="@id/closeQueueButton"
+                        android:layout_centerVertical="true"
+                        android:orientation="vertical">
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/queueTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/now_playing_queue"
+                            android:textAppearance="@style/TextViewSubtitle1"
+                            android:textColor="@color/md_white_1000"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/queueCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:alpha="0.75"
+                            android:textColor="@color/md_white_1000"
+                            android:textSize="11sp"
+                            tools:text="12 songs" />
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:id="@+id/closeQueueButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/now_playing_queue"
-                        android:textAppearance="@style/TextViewSubtitle1"
-                        android:textColor="@color/md_white_1000"
-                        android:textStyle="bold" />
+                        android:layout_alignParentEnd="true"
+                        android:layout_centerVertical="true"
+                        android:background="?attr/roundSelector"
+                        android:padding="8dp"
+                        app:srcCompat="@drawable/ic_close"
+                        app:tint="@color/md_white_1000" />
+                </RelativeLayout>
 
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/queueCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:alpha="0.75"
-                        android:textColor="@color/md_white_1000"
-                        android:textSize="11sp"
-                        tools:text="12 songs" />
-                </LinearLayout>
+                <!-- Queue RecyclerView -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/queueRecyclerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:clipToPadding="false"
+                    android:overScrollMode="never" />
+            </LinearLayout>
+        </FrameLayout>
 
-                <androidx.appcompat.widget.AppCompatImageView
-                    android:id="@+id/closeQueueButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_alignParentEnd="true"
-                    android:layout_centerVertical="true"
-                    android:background="?attr/roundSelector"
-                    android:padding="8dp"
-                    app:srcCompat="@drawable/ic_close"
-                    app:tint="@color/md_white_1000" />
-            </RelativeLayout>
+        <!-- Frameless Glassmorphic Lyrics Overlay Container -->
+        <FrameLayout
+            android:id="@+id/lyricsIslandContainer"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:visibility="gone"
+            tools:visibility="visible">
 
-            <!-- Queue RecyclerView -->
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/queueRecyclerView"
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:clipToPadding="false"
-                android:overScrollMode="never" />
-        </LinearLayout>
-    </FrameLayout>
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingHorizontal="8dp">
+
+                <!-- Previous Lyric Line (i - 1) -->
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/lyricsPrevLine"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:shadowColor="#59000000"
+                    android:shadowDx="0"
+                    android:shadowDy="1"
+                    android:shadowRadius="4"
+                    android:textColor="#521C1A24"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    tools:text="—" />
+
+                <!-- Active Lyric Line (i) -->
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/lyricsActiveLine"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginVertical="8dp"
+                    android:gravity="center"
+                    android:maxLines="3"
+                    android:shadowColor="#A6000000"
+                    android:shadowDx="0"
+                    android:shadowDy="2"
+                    android:shadowRadius="14"
+                    android:textColor="#C716141C"
+                    android:textSize="30sp"
+                    android:textStyle="bold"
+                    tools:text="Dance the night away, live your life and stay young on the floor" />
+
+                <!-- Next Lyric Line (i + 1) -->
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/lyricsNextLine"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:shadowColor="#73000000"
+                    android:shadowDx="0"
+                    android:shadowDy="1"
+                    android:shadowRadius="8"
+                    android:textColor="#851A1821"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    tools:text="..." />
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
 
     <!-- LAYER 4: The Dynamic Island Capsule Container -->
     <FrameLayout

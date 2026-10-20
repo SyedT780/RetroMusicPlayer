@@ -69,4 +69,30 @@ public abstract class AbsSynchronizedLyrics extends Lyrics {
     parse(true);
     return valid;
   }
+
+  public SparseArray<String> getLines() {
+    parse(false);
+    return lines;
+  }
+
+  public int getLineCount() {
+    parse(false);
+    return lines.size();
+  }
+
+  public int getLineTime(int index) {
+    parse(false);
+    if (index >= 0 && index < lines.size()) {
+      return lines.keyAt(index);
+    }
+    return -1;
+  }
+
+  public String getLineText(int index) {
+    parse(false);
+    if (index >= 0 && index < lines.size()) {
+      return lines.valueAt(index);
+    }
+    return "";
+  }
 }
