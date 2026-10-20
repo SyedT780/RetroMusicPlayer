@@ -71,7 +71,12 @@ class ShuffleButtonSongAdapter(
 
         override fun onClick(v: View?) {
             if (itemViewType == OFFSET_ITEM) {
-                MusicPlayerRemote.openAndShuffleQueue(dataSet, true)
+                if (v?.id == R.id.playAction || v?.id == R.id.shuffleAction) {
+                    return
+                }
+                if (v === itemView) {
+                    MusicPlayerRemote.openAndShuffleQueue(dataSet, true)
+                }
                 return
             }
             super.onClick(v)

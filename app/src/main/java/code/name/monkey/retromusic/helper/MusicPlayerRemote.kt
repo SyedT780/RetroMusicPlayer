@@ -20,6 +20,7 @@ import android.content.*
 import android.database.Cursor
 import android.net.Uri
 import android.os.IBinder
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -206,6 +207,9 @@ object MusicPlayerRemote : KoinComponent {
         musicService?.play()
     }
 
+    private const val SHUFFLE_DEBOUNCE_MS = 500L
+    private var lastShuffleTime = 0L
+
     /**
      * Async
      */
@@ -216,6 +220,12 @@ object MusicPlayerRemote : KoinComponent {
 
     @JvmStatic
     fun openAndShuffleQueue(queue: List<Song>, startPlaying: Boolean) {
+        val currentTime = SystemClock.elapsedRealtime()
+        if (currentTime - lastShuffleTime < SHUFFLE_DEBOUNCE_MS) {
+            return
+        }
+        lastShuffleTime = currentTime
+
         var startPosition = 0
         if (queue.isNotEmpty()) {
             startPosition = Random().nextInt(queue.size)
@@ -236,8 +246,7 @@ object MusicPlayerRemote : KoinComponent {
                 startPlaying
             ) && musicService != null
         ) {
-            musicService?.openQueue(queue, startPosition, startPlaying)
-            setShuffleMode(shuffleMode)
+            musicService?.openQueue(queue, startPosition, startPlaying, shuffleMode)
         }
     }
 
@@ -278,6 +287,12 @@ object MusicPlayerRemote : KoinComponent {
     }
 
     fun toggleShuffleMode(): Boolean {
+        val currentTime = SystemClock.elapsedRealtime()
+        if (currentTime - lastShuffleTime < SHUFFLE_DEBOUNCE_MS) {
+            return true
+        }
+        lastShuffleTime = currentTime
+
         if (musicService != null) {
             musicService?.toggleShuffle()
             return true

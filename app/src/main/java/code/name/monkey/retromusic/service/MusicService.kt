@@ -782,6 +782,7 @@ class MusicService : MediaBrowserServiceCompat(),
         playingQueue: List<Song>?,
         startPosition: Int,
         startPlaying: Boolean,
+        shuffleMode: Int = getShuffleMode(),
     ) {
         if (!playingQueue.isNullOrEmpty()
             && startPosition >= 0 && startPosition < playingQueue.size
@@ -789,6 +790,10 @@ class MusicService : MediaBrowserServiceCompat(),
             // it is important to copy the playing queue here first as we might add/remove songs later
             originalPlayingQueue = ArrayList(playingQueue)
             this.playingQueue = ArrayList(originalPlayingQueue)
+            this.shuffleMode = shuffleMode
+            PreferenceManager.getDefaultSharedPreferences(this).edit {
+                putInt(SAVED_SHUFFLE_MODE, shuffleMode)
+            }
             var position = startPosition
             if (shuffleMode == SHUFFLE_MODE_SHUFFLE) {
                 makeShuffleList(this.playingQueue, startPosition)
@@ -799,6 +804,7 @@ class MusicService : MediaBrowserServiceCompat(),
             } else {
                 setPosition(position)
             }
+            handleAndSendChangeInternal(SHUFFLE_MODE_CHANGED)
             notifyChange(QUEUE_CHANGED)
         }
     }
@@ -1288,10 +1294,9 @@ class MusicService : MediaBrowserServiceCompat(),
             if (playlistSongs.isNotEmpty()) {
                 if (shuffleMode == SHUFFLE_MODE_SHUFFLE) {
                     val startPosition = Random().nextInt(playlistSongs.size)
-                    openQueue(playlistSongs, startPosition, true)
-                    setShuffleMode(shuffleMode)
+                    openQueue(playlistSongs, startPosition, true, SHUFFLE_MODE_SHUFFLE)
                 } else {
-                    openQueue(playlistSongs, 0, true)
+                    openQueue(playlistSongs, 0, true, SHUFFLE_MODE_NONE)
                 }
             } else {
                 runOnUiThread {
