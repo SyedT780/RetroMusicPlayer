@@ -27,23 +27,25 @@ data class Artist(
     constructor(
         artistName: String,
         albums: List<Album>,
-        isAlbumArtist: Boolean = false
-    ) : this(albums[0].artistId, albums, isAlbumArtist) {
+        isAlbumArtist: Boolean = false,
+        id: Long = albums.firstOrNull()?.artistId ?: -1L
+    ) : this(id, albums, isAlbumArtist) {
         name = artistName
     }
 
     var name: String = "-"
         get() {
-            val name = if (isAlbumArtist) getAlbumArtistName()
+            val rawName = if (field != "-") field
+            else if (isAlbumArtist) getAlbumArtistName()
             else getArtistName()
             return when {
-                MusicUtil.isVariousArtists(name) ->
+                MusicUtil.isVariousArtists(rawName) ->
                     VARIOUS_ARTISTS_DISPLAY_NAME
 
-                MusicUtil.isArtistNameUnknown(name) ->
+                MusicUtil.isArtistNameUnknown(rawName) ->
                     UNKNOWN_ARTIST_DISPLAY_NAME
 
-                else -> name!!
+                else -> rawName ?: UNKNOWN_ARTIST_DISPLAY_NAME
             }
         }
 

@@ -69,6 +69,7 @@ import code.name.monkey.retromusic.MATERIAL_YOU
 import code.name.monkey.retromusic.NEW_BLUR_AMOUNT
 import code.name.monkey.retromusic.NEXT_SLEEP_TIMER_ELAPSED_REALTIME
 import code.name.monkey.retromusic.NOW_PLAYING_SCREEN_ID
+import code.name.monkey.retromusic.ENHANCED_SHUFFLE
 import code.name.monkey.retromusic.PAUSE_HISTORY
 import code.name.monkey.retromusic.PAUSE_ON_ZERO_VOLUME
 import code.name.monkey.retromusic.PLAYBACK_PITCH
@@ -364,6 +365,10 @@ object PreferenceUtil {
     val isSongInfo get() = sharedPreferences.getBoolean(EXTRA_SONG_INFO, false)
 
     val isPauseOnZeroVolume get() = sharedPreferences.getBoolean(PAUSE_ON_ZERO_VOLUME, false)
+
+    var isEnhancedShuffle
+        get() = sharedPreferences.getBoolean(ENHANCED_SHUFFLE, false)
+        set(value) = sharedPreferences.edit { putBoolean(ENHANCED_SHUFFLE, value) }
 
     var isSleepTimerFinishMusic
         get() = sharedPreferences.getBoolean(

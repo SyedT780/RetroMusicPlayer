@@ -59,7 +59,15 @@ class SongsFragment : AbsRecyclerViewCustomGridSizeFragment<SongAdapter, GridLay
 
     override fun onPlayStateChanged() {
         super.onPlayStateChanged()
+        updatePlayingSong()
+    }
 
+    override fun onPlayingMetaChanged() {
+        super.onPlayingMetaChanged()
+        updatePlayingSong()
+    }
+
+    private fun updatePlayingSong() {
         val adapter = adapter ?: return
         val currentPosition = adapter.dataSet
             .indexOfFirst { it.id == MusicPlayerRemote.currentSong.id }
@@ -71,8 +79,6 @@ class SongsFragment : AbsRecyclerViewCustomGridSizeFragment<SongAdapter, GridLay
         }
 
         adapter.notifyItemChanged(currentPosition)
-
-        recyclerView.scrollToPosition(currentPosition)
 
         previousPlayingPosition = currentPosition
     }

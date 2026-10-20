@@ -19,6 +19,8 @@ import code.name.monkey.retromusic.ALBUM_ARTIST
 import code.name.monkey.retromusic.helper.SortOrder
 import code.name.monkey.retromusic.model.Album
 import code.name.monkey.retromusic.model.Artist
+import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.util.ArtistSeparator
 import code.name.monkey.retromusic.util.PreferenceUtil
 import java.text.Collator
 
@@ -64,6 +66,12 @@ class RealArtistRepository(
             return Artist(Artist.VARIOUS_ARTISTS_ID, albums)
         }
 
+        val allArtists = artists()
+        val found = allArtists.find { it.id == artistId }
+        if (found != null) {
+            return found
+        }
+
         val songs = songRepository.songs(
             songRepository.makeSongCursor(
                 AudioColumns.ARTIST_ID + "=?",
@@ -87,6 +95,12 @@ class RealArtistRepository(
             val albums = albumRepository.splitIntoAlbums(songs)
                 .filter { it.albumArtist == Artist.VARIOUS_ARTISTS_DISPLAY_NAME }
             return Artist(Artist.VARIOUS_ARTISTS_ID, albums, true)
+        }
+
+        val allAlbumArtists = albumArtists()
+        val found = allAlbumArtists.find { it.name.equals(artistName, ignoreCase = true) }
+        if (found != null) {
+            return found
         }
 
         val songs = songRepository.songs(
@@ -133,53 +147,85 @@ class RealArtistRepository(
     }
 
     override fun albumArtists(query: String): List<Artist> {
-        val songs = songRepository.songs(
-            songRepository.makeSongCursor(
-                "album_artist" + " LIKE ?",
-                arrayOf("%$query%"),
-                getSongLoaderSortOrder()
-            )
-        )
-        val artists = splitIntoAlbumArtists(albumRepository.splitIntoAlbums(songs))
-        return sortArtists(artists)
+        return albumArtists().filter { it.name.contains(query, ignoreCase = true) }
     }
 
     override fun artists(query: String): List<Artist> {
-        val songs = songRepository.songs(
-            songRepository.makeSongCursor(
-                AudioColumns.ARTIST + " LIKE ?",
-                arrayOf("%$query%"),
-                getSongLoaderSortOrder()
-            )
-        )
-        val artists = splitIntoArtists(albumRepository.splitIntoAlbums(songs))
-        return sortArtists(artists)
+        return artists().filter { it.name.contains(query, ignoreCase = true) }
     }
-
 
     private fun splitIntoAlbumArtists(albums: List<Album>): List<Artist> {
-        return albums.groupBy { it.albumArtist }
-            .filter {
-                !it.key.isNullOrEmpty()
-            }
-            .map {
-                val currentAlbums = it.value
-                if (currentAlbums.isNotEmpty()) {
-                    if (currentAlbums[0].albumArtist == Artist.VARIOUS_ARTISTS_DISPLAY_NAME) {
-                        Artist(Artist.VARIOUS_ARTISTS_ID, currentAlbums, true)
-                    } else {
-                        Artist(currentAlbums[0].artistId, currentAlbums, true)
-                    }
-                } else {
-                    Artist.empty
+        val allSongs = albums.flatMap { it.songs }.distinctBy { it.id }
+
+        val albumArtistNameSongPairs = mutableListOf<Pair<String, Song>>()
+        for (song in allSongs) {
+            val albumArtist = song.albumArtist
+            val names = ArtistSeparator.split(albumArtist)
+            if (names.isEmpty()) {
+                if (!albumArtist.isNullOrEmpty()) {
+                    albumArtistNameSongPairs.add(Pair(albumArtist, song))
+                }
+            } else {
+                for (name in names) {
+                    albumArtistNameSongPairs.add(Pair(name, song))
                 }
             }
+        }
+
+        val groupedByArtistName = albumArtistNameSongPairs.groupBy { (name, _) -> name.lowercase() }
+
+        return groupedByArtistName.map { (_, pairs) ->
+            val displayName = pairs.first().first
+            val artistSongs = pairs.map { it.second }.distinctBy { it.id }
+            val artistAlbums = albumRepository.splitIntoAlbums(artistSongs, sorted = false)
+
+            if (displayName.equals(Artist.VARIOUS_ARTISTS_DISPLAY_NAME, ignoreCase = true)) {
+                Artist(Artist.VARIOUS_ARTISTS_ID, artistAlbums, true)
+            } else {
+                val primaryArtistId = (displayName.lowercase().hashCode().toLong() and 0x7FFFFFFF_FFFFFFFFL)
+
+                Artist(
+                    artistName = displayName,
+                    albums = artistAlbums,
+                    isAlbumArtist = true,
+                    id = primaryArtistId
+                )
+            }
+        }
     }
 
-
     fun splitIntoArtists(albums: List<Album>): List<Artist> {
-        return albums.groupBy { it.artistId }
-            .map { Artist(it.key, it.value) }
+        val allSongs = albums.flatMap { it.songs }.distinctBy { it.id }
+
+        val artistNameSongPairs = mutableListOf<Pair<String, Song>>()
+        for (song in allSongs) {
+            val names = ArtistSeparator.split(song.artistName)
+            if (names.isEmpty()) {
+                val name = if (song.artistName.isBlank()) Artist.UNKNOWN_ARTIST_DISPLAY_NAME else song.artistName
+                artistNameSongPairs.add(Pair(name, song))
+            } else {
+                for (name in names) {
+                    artistNameSongPairs.add(Pair(name, song))
+                }
+            }
+        }
+
+        val groupedByArtistName = artistNameSongPairs.groupBy { (name, _) -> name.lowercase() }
+
+        return groupedByArtistName.map { (_, pairs) ->
+            val displayName = pairs.first().first
+            val artistSongs = pairs.map { it.second }.distinctBy { it.id }
+            val artistAlbums = albumRepository.splitIntoAlbums(artistSongs, sorted = false)
+
+            val primaryArtistId = (displayName.lowercase().hashCode().toLong() and 0x7FFFFFFF_FFFFFFFFL)
+
+            Artist(
+                artistName = displayName,
+                albums = artistAlbums,
+                isAlbumArtist = false,
+                id = primaryArtistId
+            )
+        }
     }
 
     private fun sortArtists(artists: List<Artist>): List<Artist> {
