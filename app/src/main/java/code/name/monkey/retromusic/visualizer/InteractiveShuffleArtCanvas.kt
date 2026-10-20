@@ -14,6 +14,11 @@
 
 package code.name.monkey.retromusic.visualizer
 
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint as AndroidPaint
+import android.graphics.Path as AndroidPath
+import android.graphics.PointF
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.compose.animation.core.Animatable
@@ -31,24 +36,247 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.PaintingStyle
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.asAndroidPath
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
+
+// ============================================================================
+// INTERACTIVE CANVAS RENDER COMPONENT
+// ============================================================================
+
+class InteractiveShuffleArtCanvasRenderer {
+
+    private val pathScratch = AndroidPath()
+    private val bridgePathScratch = AndroidPath()
+
+    private fun getStrataWidth(index: Int): Float {
+        return when (index) {
+            0 -> 1.8f // k-1: Summer Lichen
+            1 -> 1.4f // k-2: Autumn Ochre Bark
+            2 -> 1.2f // k-3: Detritus Loam
+            3 -> 1.0f // k-4: Weathered Granite
+            else -> max(0.8f, 0.9f - (index - 4) * 0.04f)
+        }
+    }
+
+    fun render(
+        canvas: AndroidCanvas,
+        width: Int,
+        height: Int,
+        activeRun: ShuffleVisualRecord,
+        historyRuns: List<ShuffleVisualRecord>,
+        zoomScale: Float = 1.0f,
+        panOffsetX: Float = 0.0f,
+        panOffsetY: Float = 0.0f
+    ) {
+        // Deep subterranean background
+        canvas.drawColor(AndroidColor.parseColor("#0A0D0A"))
+
+        // 1. RADIAL VIEWPORT SCALING FOCUSED ON ACTIVE RUN (Zoomed to fill canvas)
+        val activeRadius = activeRun.walk.maxRadius.coerceAtLeast(1.0f)
+        val targetRadius = if (historyRuns.isEmpty()) {
+            activeRadius
+        } else {
+            var maxHRadius = activeRadius
+            for (h in historyRuns) {
+                if (h.walk.maxRadius > maxHRadius) maxHRadius = h.walk.maxRadius
+            }
+            // Cap target radius so active run occupies ~85-90% of viewport without being squished by distant historical outliers
+            min(maxHRadius, activeRadius * 1.15f)
+        }
+
+        val padding = width * 0.04f
+        val usableHalfDim = (min(width, height) / 2f) - padding
+        val baseScale = usableHalfDim / targetRadius
+        val effectiveScale = baseScale * zoomScale
+
+        // Center origin is pinned to screen center + user pan
+        val originScreenX = (width / 2f) + panOffsetX
+        val originScreenY = (height / 2f) + panOffsetY
+
+        fun toScreen(rawX: Float, rawY: Float): PointF {
+            return PointF(
+                originScreenX + (rawX * effectiveScale),
+                originScreenY - (rawY * effectiveScale) // Y inverted for screen coordinate space
+            )
+        }
+
+        // 2. AUDIT FOR TWIN RESONANCE ACROSS HISTORY
+        var peakTwinAffinity: TwinAffinityResult? = null
+        for ((idx, hRecord) in historyRuns.withIndex()) {
+            val result = TrajectoryMath.computeTwinAffinity(activeRun.walk, hRecord.walk, idx + 1)
+            if (peakTwinAffinity == null || result.similarityPercentage > peakTwinAffinity.similarityPercentage) {
+                peakTwinAffinity = result
+            }
+        }
+
+        // 3. RENDER HISTORICAL GENERATIONS (Oldest to Newest)
+        val historyPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            style = AndroidPaint.Style.STROKE
+            strokeCap = AndroidPaint.Cap.ROUND
+            strokeJoin = AndroidPaint.Join.ROUND
+        }
+
+        val branchPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            style = AndroidPaint.Style.STROKE
+            strokeCap = AndroidPaint.Cap.ROUND
+            strokeJoin = AndroidPaint.Join.ROUND
+        }
+
+        for (i in historyRuns.indices.reversed()) {
+            val hRecord = historyRuns[i]
+            val hColor = CanvasTrajectoryRenderer.getStrataColor(i, zoomScale)
+            val hWidth = getStrataWidth(i)
+
+            // Draw historical micro-branchlets
+            branchPaint.color = hColor
+            branchPaint.strokeWidth = hWidth * 0.6f
+            for (b in hRecord.walk.branchOffsets) {
+                val src = toScreen(hRecord.walk.x[b.srcIdx], hRecord.walk.y[b.srcIdx])
+                val dst = toScreen(b.bx, b.by)
+                canvas.drawLine(src.x, src.y, dst.x, dst.y, branchPaint)
+            }
+
+            // Draw historical tendril body
+            historyPaint.color = hColor
+            historyPaint.strokeWidth = hWidth
+
+            CanvasTrajectoryRenderer.buildSmoothSplinePath(pathScratch, hRecord.walk, ::toScreen, closeLoop = true)
+            canvas.drawPath(pathScratch, historyPaint)
+        }
+
+        // 4. DRAW ANASTOMOSIS BRIDGES IF NEAR-TWIN DETECTED
+        peakTwinAffinity?.let { twin ->
+            if (twin.similarityPercentage >= 65.0f) {
+                // Translucent warning envelope along active trajectory (clean, no heavy blur filter)
+                val resonancePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+                    style = AndroidPaint.Style.STROKE
+                    color = AndroidColor.parseColor("#33FACC15") // Translucent amber gold
+                    strokeWidth = 4.0f
+                }
+                CanvasTrajectoryRenderer.buildSmoothSplinePath(pathScratch, activeRun.walk, ::toScreen, closeLoop = true)
+                canvas.drawPath(pathScratch, resonancePaint)
+
+                // Transverse connecting hyphal filaments
+                val bridgePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+                    style = AndroidPaint.Style.STROKE
+                    color = AndroidColor.parseColor("#FDDE47")
+                    strokeWidth = 1.4f
+                }
+                val nodePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+                    style = AndroidPaint.Style.FILL
+                    color = AndroidColor.WHITE
+                }
+                val beadPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+                    style = AndroidPaint.Style.FILL
+                    color = AndroidColor.parseColor("#F59E0B")
+                }
+
+                for (bridge in twin.fusedBridges) {
+                    val p1 = toScreen(bridge.ax, bridge.ay)
+                    val p2 = toScreen(bridge.bx, bridge.by)
+                    val midX = (p1.x + p2.x) / 2f + sin(bridge.step.toDouble()).toFloat() * 6f
+                    val midY = (p1.y + p2.y) / 2f + cos(bridge.step.toDouble()).toFloat() * 6f
+
+                    bridgePathScratch.reset()
+                    bridgePathScratch.moveTo(p1.x, p1.y)
+                    bridgePathScratch.quadTo(midX, midY, p2.x, p2.y)
+                    canvas.drawPath(bridgePathScratch, bridgePaint)
+
+                    canvas.drawCircle(p1.x, p1.y, 2.0f, nodePaint)
+                    canvas.drawCircle(p2.x, p2.y, 2.0f, nodePaint)
+                    canvas.drawCircle(midX, midY, 1.5f, beadPaint)
+                }
+            }
+        }
+
+        // 5. RENDER ACTIVE SPRING SHOOT
+        // Active organic branchlets
+        val activeBranchPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            style = AndroidPaint.Style.STROKE
+            strokeCap = AndroidPaint.Cap.ROUND
+            strokeJoin = AndroidPaint.Join.ROUND
+            color = AndroidColor.parseColor("#80D9F99D") // Translucent spring bioluminescence
+            strokeWidth = 0.9f
+        }
+        for (b in activeRun.walk.branchOffsets) {
+            val src = toScreen(activeRun.walk.x[b.srcIdx], activeRun.walk.y[b.srcIdx])
+            val dst = toScreen(b.bx, b.by)
+            canvas.drawLine(src.x, src.y, dst.x, dst.y, activeBranchPaint)
+        }
+
+        // Active tendril body (Crisp, clean dual-pass line without heavy setShadowLayer blur)
+        val isTwinWarning = peakTwinAffinity != null && peakTwinAffinity.similarityPercentage >= 80f
+        val activeGlowColor = if (isTwinWarning) AndroidColor.parseColor("#FDE047") else AndroidColor.parseColor("#D9F99D")
+
+        val activeGlowPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            style = AndroidPaint.Style.STROKE
+            strokeCap = AndroidPaint.Cap.ROUND
+            strokeJoin = AndroidPaint.Join.ROUND
+            strokeWidth = 2.0f
+            color = activeGlowColor
+        }
+
+        CanvasTrajectoryRenderer.buildSmoothSplinePath(pathScratch, activeRun.walk, ::toScreen, closeLoop = true)
+        canvas.drawPath(pathScratch, activeGlowPaint)
+
+        // Inner high-luminance core line for sharp, fine contrast
+        val activeCorePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            style = AndroidPaint.Style.STROKE
+            strokeCap = AndroidPaint.Cap.ROUND
+            strokeJoin = AndroidPaint.Join.ROUND
+            strokeWidth = 0.9f
+            color = AndroidColor.WHITE
+        }
+        canvas.drawPath(pathScratch, activeCorePaint)
+
+        // 6. RENDER MANUAL "PLAY NEXT" SPORE BLOSSOMS
+        val sporeHaloPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            style = AndroidPaint.Style.FILL
+            color = AndroidColor.parseColor("#20F59E0B")
+        }
+        val sporeRingPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            style = AndroidPaint.Style.STROKE
+            color = AndroidColor.parseColor("#F59E0B")
+            strokeWidth = 1.2f
+        }
+        val sporeCorePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            style = AndroidPaint.Style.FILL
+            color = AndroidColor.WHITE
+        }
+
+        val playNextIndices = activeRun.playNextIndices.ifEmpty { activeRun.manualPlayNextIndices.toSet() }
+        for (idx in playNextIndices) {
+            if (idx < activeRun.walk.size) {
+                val pos = toScreen(activeRun.walk.x[idx], activeRun.walk.y[idx])
+                canvas.drawCircle(pos.x, pos.y, 10f, sporeHaloPaint)
+                canvas.drawCircle(pos.x, pos.y, 5f, sporeRingPaint)
+                canvas.drawCircle(pos.x, pos.y, 2f, sporeCorePaint)
+            }
+        }
+
+        // 7. CENTER SEED ROOT (0, 0)
+        val rootPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            style = AndroidPaint.Style.FILL
+            color = AndroidColor.parseColor("#D9F99D")
+        }
+        val rootOuter = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+            style = AndroidPaint.Style.STROKE
+            color = AndroidColor.parseColor("#050A06")
+            strokeWidth = 1.5f
+        }
+        canvas.drawCircle(originScreenX, originScreenY, 3.5f, rootPaint)
+        canvas.drawCircle(originScreenX, originScreenY, 5.5f, rootOuter)
+    }
+}
 
 @Composable
 fun InteractiveShuffleArtCanvas(
@@ -59,13 +287,18 @@ fun InteractiveShuffleArtCanvas(
     val context = LocalContext.current
     val view = LocalView.current
     val coroutineScope = rememberCoroutineScope()
+    val renderer = remember { InteractiveShuffleArtCanvasRenderer() }
 
-    // 1. Precompute Coordinates
-    val currentWalk = remember(currentRecord.permutedTrackIndices) {
-        TrajectoryMath.computeWalk(currentRecord.permutedTrackIndices)
+    // 1. Ensure Trajectory Walk Objects are Prepared
+    val activeRunPrepared = remember(currentRecord) {
+        if (currentRecord.walk.size > 1) currentRecord
+        else currentRecord.copy(walk = TrajectoryMath.computeWalk(currentRecord.permutedTrackIndices))
     }
-    val historyWalks = remember(historicalRecords) {
-        historicalRecords.take(4).map { TrajectoryMath.computeWalk(it.permutedTrackIndices) }
+    val historicalRunsPrepared = remember(historicalRecords) {
+        historicalRecords.map { h ->
+            if (h.walk.size > 1) h
+            else h.copy(walk = TrajectoryMath.computeWalk(h.permutedTrackIndices))
+        }
     }
 
     // 2. Viewport Transform State
@@ -84,7 +317,7 @@ fun InteractiveShuffleArtCanvas(
     Canvas(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(currentRecord.runId) {
+            .pointerInput(activeRunPrepared.runId) {
                 coroutineScope {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
@@ -129,7 +362,7 @@ fun InteractiveShuffleArtCanvas(
                     }
                 }
             }
-            .pointerInput(currentRecord.runId) {
+            .pointerInput(activeRunPrepared.runId) {
                 detectTapGestures(
                     onDoubleTap = { animateFitToView() },
                     onLongPress = {
@@ -138,10 +371,8 @@ fun InteractiveShuffleArtCanvas(
                         coroutineScope.launch {
                             val uri = ShuffleArtExporter.exportTransparentHdImage(
                                 context = context,
-                                activeWalk = currentWalk,
-                                historyWalks = historyWalks,
-                                playNextIndices = currentRecord.manualPlayNextIndices,
-                                runId = currentRecord.runId,
+                                activeRun = activeRunPrepared,
+                                historyRuns = historicalRunsPrepared,
                                 exportDimension = 3000
                             )
                             if (uri != null) {
@@ -154,102 +385,20 @@ fun InteractiveShuffleArtCanvas(
                 )
             }
     ) {
-        val width = size.width
-        val height = size.height
-
-        // 3. Compute Global Bounding Box across all layers
-        var gMinX = currentWalk.minX
-        var gMaxX = currentWalk.maxX
-        var gMinY = currentWalk.minY
-        var gMaxY = currentWalk.maxY
-
-        for (h in historyWalks) {
-            if (h.minX < gMinX) gMinX = h.minX
-            if (h.maxX > gMaxX) gMaxX = h.maxX
-            if (h.minY < gMinY) gMinY = h.minY
-            if (h.maxY > gMaxY) gMaxY = h.maxY
-        }
-
-        val pad = 24.dp.toPx()
-        val spanX = max(1f, gMaxX - gMinX)
-        val spanY = max(1f, gMaxY - gMinY)
-        val baseScale = min((width - pad * 2f) / spanX, (height - pad * 2f) / spanY)
-        val effectiveScale = baseScale * zoomScale.value
-        val midX = (gMinX + gMaxX) / 2f
-        val midY = (gMinY + gMaxY) / 2f
-
-        fun toScreen(rawX: Float, rawY: Float): Offset {
-            return Offset(
-                x = width / 2f + panOffsetX.value + (rawX - midX) * effectiveScale,
-                y = height / 2f + panOffsetY.value - (rawY - midY) * effectiveScale
-            )
-        }
-
-        // 4. Distinct Recency-Based Layer Color Palette
-        // Index 0: k-1 (most recent past run) -> Vibrant Rose/Pink
-        // Index 1: k-2 (2 runs ago)            -> Violet/Purple
-        // Index 2: k-3 (3 runs ago)            -> Electric Amber/Orange
-        // Index 3: k-4 (4 runs ago)            -> Emerald Green
-        val recencyPalette = listOf(
-            Color(0xFFF43F5E).copy(alpha = 0.90f),
-            Color(0xFFA855F7).copy(alpha = 0.85f),
-            Color(0xFFF97316).copy(alpha = 0.80f),
-            Color(0xFF10B981).copy(alpha = 0.75f)
-        )
-
-        // Render historical layers from oldest to newest (back to front)
-        for (hIndex in historyWalks.indices.reversed()) {
-            val hWalk = historyWalks[hIndex]
-            val color = recencyPalette.getOrElse(hIndex) { recencyPalette.last() }
-            val path = Path().apply {
-                val start = toScreen(hWalk.x[0], hWalk.y[0])
-                moveTo(start.x, start.y)
-                for (t in 1 until hWalk.size) {
-                    val pt = toScreen(hWalk.x[t], hWalk.y[t])
-                    lineTo(pt.x, pt.y)
-                }
-            }
-            drawPath(
-                path = path,
-                color = color,
-                style = Stroke(width = 0.9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-            )
-        }
-
-        // 5. Render Active Run with Refined Cyan Hairline & Subtle Glow
-        val activePath = Path().apply {
-            val start = toScreen(currentWalk.x[0], currentWalk.y[0])
-            moveTo(start.x, start.y)
-            for (t in 1 until currentWalk.size) {
-                val pt = toScreen(currentWalk.x[t], currentWalk.y[t])
-                lineTo(pt.x, pt.y)
-            }
-        }
+        val width = size.width.toInt()
+        val height = size.height.toInt()
 
         drawIntoCanvas { canvas ->
-            val frameworkPaint = Paint().apply {
-                color = Color(0xFF00F0FF)
-                style = PaintingStyle.Stroke
-                strokeWidth = 1.0.dp.toPx()
-                strokeCap = StrokeCap.Round
-                strokeJoin = StrokeJoin.Round
-                asFrameworkPaint().setShadowLayer(2.5.dp.toPx(), 0f, 0f, android.graphics.Color.parseColor("#00F0FF"))
-            }
-            canvas.nativeCanvas.drawPath(activePath.asAndroidPath(), frameworkPaint.asFrameworkPaint())
+            renderer.render(
+                canvas = canvas.nativeCanvas,
+                width = width,
+                height = height,
+                activeRun = activeRunPrepared,
+                historyRuns = historicalRunsPrepared,
+                zoomScale = zoomScale.value,
+                panOffsetX = panOffsetX.value,
+                panOffsetY = panOffsetY.value
+            )
         }
-
-        // 6. Render Manual "Play Next" Markers
-        val playNextIndices = currentRecord.manualPlayNextIndices
-        for (idx in playNextIndices) {
-            if (idx < currentWalk.size) {
-                val center = toScreen(currentWalk.x[idx], currentWalk.y[idx])
-                drawCircle(color = Color(0xFFFFB703).copy(alpha = 0.28f), radius = 5.5.dp.toPx(), center = center)
-                drawCircle(color = Color(0xFFFFB703), radius = 3.2.dp.toPx(), center = center, style = Stroke(width = 1.2.dp.toPx()))
-                drawCircle(color = Color.White, radius = 1.5.dp.toPx(), center = center)
-            }
-        }
-
-        // 7. Origin Marker Dot
-        drawCircle(color = Color(0xFF00F0FF), radius = 2.5.dp.toPx(), center = toScreen(0f, 0f))
     }
 }

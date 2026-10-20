@@ -19,6 +19,7 @@ import android.util.Log
 import code.name.monkey.retromusic.App
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.visualizer.ShuffleVisualRecord
+import code.name.monkey.retromusic.visualizer.TrajectoryMath
 import java.io.File
 import java.util.Locale
 
@@ -253,7 +254,7 @@ object ShuffleAuditLogger {
 
             visualRecords.add(
                 ShuffleVisualRecord(
-                    runId = i + 1,
+                    runId = (i + 1).toLong(),
                     mode = mode,
                     trackCount = roundMetric.trackCount,
                     artistCollisions = roundMetric.artistCollisions,
@@ -261,7 +262,9 @@ object ShuffleAuditLogger {
                     repeatedTransText = repeatedTransText,
                     repetitivenessScore = scoreText,
                     permutedTrackIndices = run.permutedTrackIndices,
-                    manualPlayNextIndices = run.manualPlayNextIndices
+                    manualPlayNextIndices = run.manualPlayNextIndices,
+                    playNextIndices = run.manualPlayNextIndices.toSet(),
+                    walk = TrajectoryMath.computeWalk(run.permutedTrackIndices)
                 )
             )
         }

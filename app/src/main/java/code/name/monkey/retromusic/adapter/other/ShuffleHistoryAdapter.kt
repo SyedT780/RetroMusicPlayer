@@ -138,8 +138,8 @@ class ShuffleHistoryAdapter(
                 }
 
                 val visualRecords = ShuffleAuditLogger.getVisualRecords()
-                val currentRecord = visualRecords.find { it.runId == item.roundNumber }
-                val historicalRecords = visualRecords.filter { it.runId < item.roundNumber }.takeLast(4).reversed()
+                val currentRecord = visualRecords.find { it.runId == item.roundNumber.toLong() }
+                val historicalRecords = visualRecords.filter { it.runId < item.roundNumber.toLong() }.takeLast(4).reversed()
 
                 if (currentRecord != null) {
                     binding.playNextLegendItem.isVisible = currentRecord.manualPlayNextIndices.isNotEmpty()

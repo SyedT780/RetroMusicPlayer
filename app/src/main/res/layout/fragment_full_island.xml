@@ -64,53 +64,35 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="12dp"
-                android:background="@drawable/bg_frosted_subcard"
+                android:background="@drawable/bg_island_capsule"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingHorizontal="12dp"
-                android:paddingVertical="6dp"
+                android:paddingVertical="8dp"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toStartOf="@+id/artistImage"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent">
 
-                <View
-                    android:id="@+id/upNextDot"
-                    android:layout_width="8dp"
-                    android:layout_height="8dp"
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/upNextIcon"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
                     android:layout_marginEnd="8dp"
-                    android:background="@drawable/bg_island_capsule"
-                    android:backgroundTint="#FF3366" />
+                    app:srcCompat="@drawable/ic_keyboard_arrow_right" />
 
-                <LinearLayout
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/nextSong"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/nextSongLabel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:alpha="0.75"
-                        android:text="@string/next_song"
-                        android:textAppearance="@style/TextViewSubtitle2"
-                        android:textColor="@color/md_white_1000"
-                        android:textSize="9sp"
-                        android:textStyle="bold" />
-
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/nextSong"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:singleLine="true"
-                        android:textAppearance="@style/TextViewSubtitle1"
-                        android:textColor="@color/md_white_1000"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        tools:text="@tools:sample/lorem/random" />
-                </LinearLayout>
+                    android:ellipsize="end"
+                    android:singleLine="true"
+                    android:textAppearance="@style/TextViewSubtitle1"
+                    android:textColor="@color/md_white_1000"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    tools:text="@tools:sample/lorem/random" />
             </LinearLayout>
 
             <com.google.android.material.imageview.ShapeableImageView
@@ -128,6 +110,86 @@
         </androidx.constraintlayout.widget.ConstraintLayout>
 
     </com.google.android.material.appbar.MaterialToolbar>
+
+    <!-- LAYER 3.5: Queue Island Container -->
+    <FrameLayout
+        android:id="@+id/queueIslandContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_island_capsule"
+        android:elevation="18dp"
+        android:padding="16dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/dynamicIslandBlur"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/playerToolbar"
+        tools:visibility="visible">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <!-- Queue Header Row -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_toStartOf="@id/closeQueueButton"
+                    android:layout_centerVertical="true"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/queueTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/now_playing_queue"
+                        android:textAppearance="@style/TextViewSubtitle1"
+                        android:textColor="@color/md_white_1000"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/queueCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:alpha="0.75"
+                        android:textColor="@color/md_white_1000"
+                        android:textSize="11sp"
+                        tools:text="12 songs" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.AppCompatImageView
+                    android:id="@+id/closeQueueButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:background="?attr/roundSelector"
+                    android:padding="8dp"
+                    app:srcCompat="@drawable/ic_close"
+                    app:tint="@color/md_white_1000" />
+            </RelativeLayout>
+
+            <!-- Queue RecyclerView -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/queueRecyclerView"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clipToPadding="false"
+                android:overScrollMode="never" />
+        </LinearLayout>
+    </FrameLayout>
 
     <!-- LAYER 4: The Dynamic Island Capsule Container -->
     <FrameLayout
@@ -189,36 +251,16 @@
                         android:textStyle="bold"
                         tools:text="@tools:sample/lorem/random" />
 
-                    <LinearLayout
-                        android:layout_width="wrap_content"
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/text"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:ellipsize="end"
                         android:gravity="center"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.textview.MaterialTextView
-                            android:id="@+id/text"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:ellipsize="end"
-                            android:gravity="center"
-                            android:maxLines="1"
-                            android:textColor="@color/md_white_1000"
-                            android:textSize="13sp"
-                            tools:text="@tools:sample/lorem/random" />
-
-                        <com.google.android.material.textview.MaterialTextView
-                            android:id="@+id/hqBadge"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
-                            android:background="@drawable/bg_frosted_subcard"
-                            android:paddingHorizontal="4dp"
-                            android:paddingVertical="1dp"
-                            android:text="HQ"
-                            android:textColor="@color/md_white_1000"
-                            android:textSize="9sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
+                        android:maxLines="1"
+                        android:textColor="@color/md_white_1000"
+                        android:textSize="13sp"
+                        tools:text="@tools:sample/lorem/random" />
                 </LinearLayout>
 
                 <androidx.appcompat.widget.AppCompatImageView
@@ -305,7 +347,8 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="20dp"
                     android:layout_marginEnd="20dp"
-                    android:elevation="12dp"
+                    app:elevation="0dp"
+                    app:pressedTranslationZ="0dp"
                     app:fabCustomSize="56dp"
                     app:srcCompat="@drawable/ic_pause_white_64dp" />
 

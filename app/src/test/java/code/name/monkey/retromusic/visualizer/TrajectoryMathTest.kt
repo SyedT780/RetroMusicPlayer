@@ -15,6 +15,7 @@
 package code.name.monkey.retromusic.visualizer
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
@@ -33,6 +34,7 @@ class TrajectoryMathTest {
             val pathIdentity = TrajectoryMath.computeWalk(identityPerm)
             assertEquals("Identity perm (N=$n) x[N] must return to origin 0", 0f, pathIdentity.x[n], floatEpsilon)
             assertEquals("Identity perm (N=$n) y[N] must return to origin 0", 0f, pathIdentity.y[n], floatEpsilon)
+            assertTrue("maxRadius should be >= 1.0f", pathIdentity.maxRadius >= 1.0f)
 
             // Test reverse permutation
             val reversePerm = IntArray(n) { n - 1 - it }
@@ -51,25 +53,55 @@ class TrajectoryMathTest {
     }
 
     @Test
-    fun testTrajectoryPathBoundingBox() {
+    fun testMicroBranchletsGeneration() {
+        val n = 15
+        val perm = IntArray(n) { it }
+        val walk = TrajectoryMath.computeWalk(perm)
+
+        assertEquals(n + 1, walk.size)
+        assertFalse("Branch offsets should be generated for N >= 3", walk.branchOffsets.isEmpty())
+
+        for (branch in walk.branchOffsets) {
+            assertTrue("Branch source index should be within bounds", branch.srcIdx in 0 until n)
+            assertTrue("Depth seed should be in 0.0..1.0", branch.depthSeed in 0.0f..1.0f)
+        }
+    }
+
+    @Test
+    fun testTwinAffinityCalculation() {
         val n = 20
         val perm = IntArray(n) { it }
-        val random = Random(1234)
-        perm.shuffle(random)
+        val walk1 = TrajectoryMath.computeWalk(perm)
+        val walk2 = TrajectoryMath.computeWalk(perm)
 
-        val path = TrajectoryMath.computeWalk(perm)
+        // Identical trajectories must yield 100% similarity and 0 RMSD
+        val affinityIdentical = TrajectoryMath.computeTwinAffinity(walk1, walk2, genIndex = 1)
+        assertEquals("Identical walks should yield 100% similarity", 100.0f, affinityIdentical.similarityPercentage, floatEpsilon)
+        assertEquals("Identical walks should yield 0.0 RMSD", 0.0f, affinityIdentical.rmsd, floatEpsilon)
 
-        assertEquals(n + 1, path.size)
-        assertEquals(0f, path.x[0], 1e-5f)
-        assertEquals(0f, path.y[0], 1e-5f)
+        // Slightly different/shuffled trajectories
+        val permShuffled = perm.clone()
+        permShuffled.shuffle(Random(999))
+        val walkShuffled = TrajectoryMath.computeWalk(permShuffled)
 
-        for (t in 0..n) {
-            val xt = path.x[t]
-            val yt = path.y[t]
-            assertTrue("x[$t] = $xt should be >= minX ${path.minX}", xt >= path.minX - 1e-5f)
-            assertTrue("x[$t] = $xt should be <= maxX ${path.maxX}", xt <= path.maxX + 1e-5f)
-            assertTrue("y[$t] = $yt should be >= minY ${path.minY}", yt >= path.minY - 1e-5f)
-            assertTrue("y[$t] = $yt should be <= maxY ${path.maxY}", yt <= path.maxY + 1e-5f)
-        }
+        val affinityShuffled = TrajectoryMath.computeTwinAffinity(walk1, walkShuffled, genIndex = 1)
+        assertTrue("Shuffled walks should have similarity <= 100%", affinityShuffled.similarityPercentage <= 100.0f)
+        assertTrue("Shuffled walks should have RMSD > 0", affinityShuffled.rmsd > 0f)
+    }
+
+    @Test
+    fun testStrataColorResolution() {
+        // Base strata colors
+        val colorK1 = CanvasTrajectoryRenderer.getStrataColor(0, 1.0f)
+        val colorK2 = CanvasTrajectoryRenderer.getStrataColor(1, 1.0f)
+        val colorFossil = CanvasTrajectoryRenderer.getStrataColor(10, 1.0f)
+
+        assertTrue("Color for k-1 should be valid ARGB", colorK1 != 0)
+        assertTrue("Color for k-2 should be valid ARGB", colorK2 != 0)
+        assertTrue("Color for fossilized strata should be valid ARGB", colorFossil != 0)
+
+        // Cosmic bloom shift on zoom
+        val colorZoomed = CanvasTrajectoryRenderer.getStrataColor(0, 8.0f)
+        assertTrue("Zoomed color should differ due to cosmic mineral bloom", colorK1 != colorZoomed)
     }
 }

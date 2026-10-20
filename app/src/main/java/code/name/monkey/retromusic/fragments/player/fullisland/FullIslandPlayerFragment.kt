@@ -24,22 +24,28 @@ import android.util.TypedValue
 import android.view.MenuItem
 import android.view.View
 import android.widget.ImageButton
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.R
+import code.name.monkey.retromusic.adapter.song.PlayingQueueAdapter
 import code.name.monkey.retromusic.databinding.FragmentFullIslandBinding
 import code.name.monkey.retromusic.extensions.applyColor
 import code.name.monkey.retromusic.extensions.drawAboveSystemBars
 import code.name.monkey.retromusic.extensions.getTintedDrawable
 import code.name.monkey.retromusic.extensions.hide
+import code.name.monkey.retromusic.extensions.setArtistLinks
 import code.name.monkey.retromusic.extensions.show
 import code.name.monkey.retromusic.extensions.whichFragment
 import code.name.monkey.retromusic.fragments.base.AbsPlayerFragment
 import code.name.monkey.retromusic.fragments.base.goToAlbum
 import code.name.monkey.retromusic.fragments.base.goToArtist
+import code.name.monkey.retromusic.fragments.base.goToArtistByName
 import code.name.monkey.retromusic.fragments.player.CoverLyricsFragment
 import code.name.monkey.retromusic.fragments.player.PlayerAlbumCoverFragment
 import code.name.monkey.retromusic.glide.RetroGlideExtension
@@ -71,6 +77,7 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         get() = lastColor
 
     private lateinit var progressViewUpdateHelper: MusicProgressViewUpdateHelper
+    private var playingQueueAdapter: PlayingQueueAdapter? = null
 
     override fun playerToolbar(): Toolbar {
         return binding.playerToolbar
@@ -109,9 +116,41 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
     }
 
     private fun setupIslandInteractions() {
-        binding.upNextPill.setOnClickListener { goToAlbum(requireActivity()) }
+        binding.upNextPill.setOnClickListener { toggleQueueIsland() }
+        binding.closeQueueButton.setOnClickListener { toggleQueueIsland(false) }
         binding.title.setOnClickListener { goToAlbum(requireActivity()) }
-        binding.text.setOnClickListener { goToArtist(requireActivity()) }
+    }
+
+    private fun toggleQueueIsland(show: Boolean? = null) {
+        val targetVisibility = show ?: !binding.queueIslandContainer.isVisible
+        if (targetVisibility) {
+            setupQueueAdapter()
+            binding.queueIslandContainer.show()
+        } else {
+            binding.queueIslandContainer.hide()
+        }
+    }
+
+    private fun setupQueueAdapter() {
+        val queue = MusicPlayerRemote.playingQueue
+        val pos = MusicPlayerRemote.position
+        binding.queueCount.text = resources.getQuantityString(R.plurals.albumSongs, queue.size, queue.size)
+
+        if (playingQueueAdapter == null) {
+            playingQueueAdapter = PlayingQueueAdapter(
+                requireActivity() as AppCompatActivity,
+                queue.toMutableList(),
+                pos,
+                R.layout.item_queue
+            )
+            binding.queueRecyclerView.layoutManager = LinearLayoutManager(requireContext())
+            binding.queueRecyclerView.adapter = playingQueueAdapter
+        } else {
+            playingQueueAdapter?.swapDataSet(queue, pos)
+        }
+        if (pos in queue.indices) {
+            binding.queueRecyclerView.scrollToPosition(pos)
+        }
     }
 
     private fun setUpMusicControllers() {
@@ -143,6 +182,10 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
     }
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
+        if (item.itemId == R.id.now_playing) {
+            toggleQueueIsland()
+            return true
+        }
         return super.onMenuItemClick(item)
     }
 
@@ -202,17 +245,23 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
 
         val drawable = binding.dynamicIslandBlur.background as? GradientDrawable
         drawable?.setColor(palette.islandBg)
-        drawable?.setStroke(
-            TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 1.2f, resources.displayMetrics).toInt(),
-            palette.strokeGlowColor
-        )
+
+        val upNextBg = binding.upNextPill.background as? GradientDrawable
+        upNextBg?.setColor(palette.islandBg)
+
+        val queueBg = binding.queueIslandContainer.background as? GradientDrawable
+        queueBg?.setColor(palette.islandBg)
 
         binding.title.setTextColor(palette.textPrimary)
         binding.text.setTextColor(palette.textSecondary)
         binding.songCurrentProgress.setTextColor(palette.textSecondary)
         binding.songTotalTime.setTextColor(palette.textSecondary)
 
-        binding.upNextDot.backgroundTintList = ColorStateList.valueOf(palette.accentColor)
+        binding.queueTitle.setTextColor(palette.textPrimary)
+        binding.queueCount.setTextColor(palette.textSecondary)
+        binding.closeQueueButton.imageTintList = ColorStateList.valueOf(palette.textPrimary)
+
+        binding.upNextIcon.imageTintList = ColorStateList.valueOf(palette.accentColor)
 
         binding.playPauseButton.backgroundTintList = ColorStateList.valueOf(palette.fabColor)
         binding.playPauseButton.imageTintList = ColorStateList.valueOf(palette.fabIconColor)
@@ -317,7 +366,9 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
     private fun updateSong() {
         val song = MusicPlayerRemote.currentSong
         binding.title.text = song.title
-        binding.text.text = song.artistName
+        binding.text.setArtistLinks(song.artistName) { artistName ->
+            goToArtistByName(requireActivity(), artistName)
+        }
         updatePlayPauseState()
         updateIsFavoriteIcon()
     }
@@ -336,16 +387,19 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
 
     override fun onQueueChanged() {
         super.onQueueChanged()
-        if (MusicPlayerRemote.playingQueue.isNotEmpty()) updateLabel()
+        if (MusicPlayerRemote.playingQueue.isNotEmpty()) {
+            updateLabel()
+            if (binding.queueIslandContainer.isVisible) {
+                setupQueueAdapter()
+            }
+        }
     }
 
     private fun updateLabel() {
         if ((MusicPlayerRemote.playingQueue.size - 1) == (MusicPlayerRemote.position)) {
-            binding.nextSongLabel.setText(R.string.last_song)
-            binding.nextSong.hide()
+            binding.nextSong.setText(R.string.last_song)
         } else {
             val title = MusicPlayerRemote.playingQueue[MusicPlayerRemote.position + 1].title
-            binding.nextSongLabel.setText(R.string.next_song)
             binding.nextSong.apply {
                 text = title
                 show()

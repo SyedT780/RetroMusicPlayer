@@ -16,6 +16,7 @@ package code.name.monkey.retromusic.fragments.other
 
 import android.os.Bundle
 import android.view.View
+import androidx.core.text.parseAsHtml
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -49,7 +50,31 @@ class ShuffleHistoryFragment : Fragment(R.layout.fragment_shuffle_history) {
             showRawReportDialog()
         }
 
+        setupSketchInfoCard()
         loadHistory()
+    }
+
+    private fun setupSketchInfoCard() {
+        val infoTextHtml = """
+            Every time you shuffle, your queue traces an unrepeatable botanical fingerprint starting and returning to the center. Each step represents a track, while older shuffles naturally fade into the background like rings in an old tree.<br/><br/>
+            <b>Standard Shuffle (Pure Random):</b><br/>
+            Follows pure chance (Fisher-Yates). Trajectories wander freely with natural loops, twists, and occasional tight knots where similar tracks happen to play close together.<br/><br/>
+            <b>Smart Shuffle (Anti-Clustering):</b><br/>
+            Prioritizes track variety. By spacing out songs from the same artist and album, it creates wider, more balanced organic loops that explore the space evenly without repetitive clusters.<br/><br/>
+            <b>Gold Vines (Near-Twins):</b><br/>
+            If two shuffles ever end up nearly identical, nature bridges them together with glowing golden filaments—letting you know when two queues shared a similar path.
+        """.trimIndent().parseAsHtml()
+
+        binding.sketchInfoText.text = infoTextHtml
+
+        binding.sketchInfoHeader.setOnClickListener {
+            val isExpanded = binding.sketchInfoContent.isVisible
+            binding.sketchInfoContent.isVisible = !isExpanded
+            binding.sketchInfoArrow.setImageResource(
+                if (!isExpanded) R.drawable.ic_keyboard_arrow_up
+                else R.drawable.ic_keyboard_arrow_down
+            )
+        }
     }
 
     private fun loadHistory() {
@@ -57,6 +82,7 @@ class ShuffleHistoryFragment : Fragment(R.layout.fragment_shuffle_history) {
         val hasHistory = summary.totalShuffles > 0
 
         binding.summaryCard.isVisible = hasHistory
+        binding.sketchInfoCard.isVisible = hasHistory
         binding.recyclerView.isVisible = hasHistory
         binding.emptyState.isVisible = !hasHistory
 
