@@ -154,7 +154,6 @@ dependencies {
 
     implementation(libs.glide)
     ksp(libs.glide.ksp)
-    implementation(libs.glide.okhttp3.integration)
 
     implementation(libs.advrecyclerview)
 

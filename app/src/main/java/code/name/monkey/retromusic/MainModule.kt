@@ -4,6 +4,7 @@ import androidx.room.Room
 import code.name.monkey.retromusic.auto.AutoMusicProvider
 import code.name.monkey.retromusic.cast.RetroWebServer
 import code.name.monkey.retromusic.db.MIGRATION_23_24
+import code.name.monkey.retromusic.db.MIGRATION_24_25
 import code.name.monkey.retromusic.db.RetroDatabase
 import code.name.monkey.retromusic.fragments.LibraryViewModel
 import code.name.monkey.retromusic.fragments.albums.AlbumDetailsViewModel
@@ -16,6 +17,9 @@ import code.name.monkey.retromusic.network.provideLastFmRest
 import code.name.monkey.retromusic.network.provideLastFmRetrofit
 import code.name.monkey.retromusic.network.provideOkHttp
 import code.name.monkey.retromusic.repository.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.bind
@@ -41,7 +45,8 @@ private val roomModule = module {
 
     single {
         Room.databaseBuilder(androidContext(), RetroDatabase::class.java, "playlist.db")
-            .addMigrations(MIGRATION_23_24)
+            .addMigrations(MIGRATION_23_24, MIGRATION_24_25)
+            .fallbackToDestructiveMigration()
             .build()
     }
 
@@ -57,10 +62,19 @@ private val roomModule = module {
         get<RetroDatabase>().historyDao()
     }
 
+    factory {
+        get<RetroDatabase>().shuffleHistoryDao()
+    }
+
+    single {
+        ShuffleHistoryRepository(get(), CoroutineScope(Dispatchers.IO + SupervisorJob()))
+    }
+
     single {
         RealRoomRepository(get(), get(), get())
     } bind RoomRepository::class
 }
+
 private val autoModule = module {
     single {
         AutoMusicProvider(
@@ -74,79 +88,37 @@ private val autoModule = module {
         )
     }
 }
-private val mainModule = module {
-    single {
-        androidContext().contentResolver
-    }
-    single {
-        RetroWebServer(get())
-    }
-}
-private val dataModule = module {
+
+val repositoryModule = module {
+    single { RealSongRepository(androidContext()) } bind SongRepository::class
+    single { RealAlbumRepository(get()) } bind AlbumRepository::class
+    single { RealArtistRepository(get(), get()) } bind ArtistRepository::class
+    single { RealGenreRepository(androidContext().contentResolver, get()) } bind GenreRepository::class
+    single { RealLastAddedRepository(get(), get(), get()) } bind LastAddedRepository::class
+    single { RealPlaylistRepository(androidContext().contentResolver) } bind PlaylistRepository::class
+    single { RealSearchRepository(get(), get(), get(), get(), get()) }
+    single { RealTopPlayedRepository(androidContext(), get(), get(), get()) } bind TopPlayedRepository::class
+    single { RealLocalDataRepository(androidContext()) } bind LocalDataRepository::class
+
     single {
         RealRepository(
-            get(),
-            get(),
-            get(),
-            get(),
-            get(),
-            get(),
-            get(),
-            get(),
-            get(),
-            get(),
-            get(),
-            get(),
+            context = androidContext(),
+            lastFMService = get(),
+            songRepository = get(),
+            albumRepository = get(),
+            artistRepository = get(),
+            genreRepository = get(),
+            lastAddedRepository = get(),
+            playlistRepository = get(),
+            searchRepository = get(),
+            topPlayedRepository = get(),
+            roomRepository = get(),
+            localDataRepository = get()
         )
     } bind Repository::class
-
-    single {
-        RealSongRepository(get())
-    } bind SongRepository::class
-
-    single {
-        RealGenreRepository(get(), get())
-    } bind GenreRepository::class
-
-    single {
-        RealAlbumRepository(get())
-    } bind AlbumRepository::class
-
-    single {
-        RealArtistRepository(get(), get())
-    } bind ArtistRepository::class
-
-    single {
-        RealPlaylistRepository(get())
-    } bind PlaylistRepository::class
-
-    single {
-        RealTopPlayedRepository(get(), get(), get(), get())
-    } bind TopPlayedRepository::class
-
-    single {
-        RealLastAddedRepository(
-            get(),
-            get(),
-            get()
-        )
-    } bind LastAddedRepository::class
-
-    single {
-        RealSearchRepository(
-            get(),
-            get(),
-            get(),
-            get(),
-            get()
-        )
-    }
-    single {
-        RealLocalDataRepository(get())
-    } bind LocalDataRepository::class
 }
 
-private val viewModules = module {
+val viewModelModule = module {
 
     viewModel {
         LibraryViewModel(get())
@@ -159,18 +131,11 @@ private val viewModules = module {
         )
     }
 
-    viewModel { (artistId: Long?, artistName: String?) ->
+    viewModel { (artistId: Long, artistName: String?) ->
         ArtistDetailsViewModel(
             get(),
             artistId,
             artistName
-        )
-    }
-
-    viewModel { (playlistId: Long) ->
-        PlaylistDetailsViewModel(
-            get(),
-            playlistId
         )
     }
 
@@ -181,12 +146,25 @@ private val viewModules = module {
         )
     }
 
-    viewModel {
-        code.name.monkey.retromusic.lyrics.EmbedLyricsViewModel(
+    viewModel { (playlistId: Long) ->
+        PlaylistDetailsViewModel(
             get(),
-            get()
+            playlistId
         )
     }
 }
 
-val appModules = listOf(mainModule, dataModule, autoModule, viewModules, networkModule, roomModule)
+val appModule = module {
+    single {
+        RetroWebServer(androidContext())
+    }
+}
+
+val appModules = listOf(
+    networkModule,
+    roomModule,
+    autoModule,
+    repositoryModule,
+    viewModelModule,
+    appModule
+)

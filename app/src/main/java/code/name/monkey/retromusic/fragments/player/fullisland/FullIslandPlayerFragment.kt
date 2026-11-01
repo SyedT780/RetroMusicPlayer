@@ -55,6 +55,7 @@ import code.name.monkey.retromusic.fragments.player.CoverLyricsFragment
 import code.name.monkey.retromusic.fragments.player.PlayerAlbumCoverFragment
 import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.glide.RetroGlideExtension.songCoverOptions
+import code.name.monkey.retromusic.glide.audiocover.AudioFileCover
 import code.name.monkey.retromusic.helper.MusicPlayerRemote
 import code.name.monkey.retromusic.helper.MusicProgressViewUpdateHelper
 import code.name.monkey.retromusic.helper.PlayPauseButtonOnClickHandler
@@ -782,9 +783,21 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
 
     private fun updateAlbumImage() {
         val song = MusicPlayerRemote.currentSong
+        val primaryModel = if (code.name.monkey.retromusic.util.PreferenceUtil.isIgnoreMediaStoreArtwork) {
+            RetroGlideExtension.getSongModel(song)
+        } else {
+            AudioFileCover(song.data)
+        }
+        val fallbackModel = RetroGlideExtension.getSongModel(song)
+
         Glide.with(requireActivity())
-            .load(RetroGlideExtension.getSongModel(song))
+            .load(primaryModel)
             .songCoverOptions(song)
+            .error(
+                Glide.with(requireActivity())
+                    .load(fallbackModel)
+                    .songCoverOptions(song)
+            )
             .into(binding.albumButton)
     }
 

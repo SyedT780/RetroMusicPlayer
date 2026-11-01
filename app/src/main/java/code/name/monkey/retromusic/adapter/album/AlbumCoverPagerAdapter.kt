@@ -33,6 +33,7 @@ import code.name.monkey.retromusic.glide.RetroGlideExtension
 import code.name.monkey.retromusic.glide.RetroGlideExtension.asBitmapPalette
 import code.name.monkey.retromusic.glide.RetroGlideExtension.songCoverOptions
 import code.name.monkey.retromusic.glide.RetroMusicColoredTarget
+import code.name.monkey.retromusic.glide.audiocover.AudioFileCover
 import code.name.monkey.retromusic.misc.CustomFragmentStatePagerAdapter
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.util.MusicUtil
@@ -179,11 +180,23 @@ class AlbumCoverPagerAdapter(
         }
 
         private fun loadAlbumCover(albumCover: ImageView) {
+            val primaryModel = if (PreferenceUtil.isIgnoreMediaStoreArtwork) {
+                RetroGlideExtension.getSongModel(song)
+            } else {
+                AudioFileCover(song.data)
+            }
+            val fallbackModel = RetroGlideExtension.getSongModel(song)
+
             Glide.with(this)
                 .asBitmapPalette()
                 .songCoverOptions(song)
-                //.checkIgnoreMediaStore()
-                .load(RetroGlideExtension.getSongModel(song))
+                .load(primaryModel)
+                .error(
+                    Glide.with(this)
+                        .asBitmapPalette()
+                        .songCoverOptions(song)
+                        .load(fallbackModel)
+                )
                 .dontAnimate()
                 .into(object : RetroMusicColoredTarget(albumCover) {
                     override fun onColorReady(colors: MediaNotificationProcessor) {

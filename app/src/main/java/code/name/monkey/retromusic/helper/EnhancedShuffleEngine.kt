@@ -18,41 +18,40 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import code.name.monkey.retromusic.App
+import code.name.monkey.retromusic.helper.EnhancedStrictTailShuffleEngine.Companion.toShuffleTracks
 import code.name.monkey.retromusic.model.Song
 import java.util.ArrayDeque
-import kotlin.random.Random
+import kotlin.math.max
 
 /**
- * Two-Tier Persistent Anti-Clustering Shuffle Engine
+ * Stateful Strict Tail-Partitioned Anti-Clustering Shuffle Engine
  *
- * Separates persistent macro-cycle history from session-specific randomization.
- * Dynamically partitions the shuffle domain into Tier 1 (Unplayed tracks) at the front
- * of the virtual stream, and Tier 2 (Played tracks) pushed to the extreme tail.
+ * Decouples persistent playback history tracking from queue generation.
+ * Queue generation operates as a strictly read-only transformation.
+ * Unplayed tracks strictly occupy the front tier (slots 0 to U-1) and
+ * played tracks are quarantined to the tail (slots U to N-1).
  */
 object EnhancedShuffleEngine {
 
     private const val KEY_DOMAIN_N = "enhanced_shuffle_domain_n"
     private const val KEY_M_PLAYED = "enhanced_shuffle_m_played"
     private const val KEY_U_UNPLAYED = "enhanced_shuffle_u_unplayed"
-    private const val KEY_S_UNPLAYED = "enhanced_shuffle_s_unplayed"
-    private const val KEY_S_PLAYED = "enhanced_shuffle_s_played"
-    private const val KEY_BITSET = "enhanced_shuffle_bitset"
+    private const val KEY_PERSISTENT_PLAYED_HISTORY = "enhanced_shuffle_persistent_played_history"
     private const val KEY_COOLDOWN = "enhanced_shuffle_cooldown"
 
     data class AttributeDescriptor(val artistId: Long, val albumId: Long = 0L)
 
-    // Persistent Macro-Cycle State (Preserved across reshuffles and app restarts)
-    private var bitset: LongArray = LongArray(0)
+    // Persistent State (Preserved across reshuffles and app restarts)
+    private val persistentPlayedHistory = HashSet<String>()
     private var domainN: Int = 0
     private var mPlayed: Int = 0
     private var uUnplayed: Int = 0
 
     // Ephemeral Session State
-    private var sUnplayed: Long = 0L
-    private var sPlayed: Long = 0L
-    private var streamPointer: Int = 0
     private val cooldown = ArrayDeque<AttributeDescriptor>()
     private var isStateRestored = false
+    private val strictEngine = EnhancedStrictTailShuffleEngine()
+    private var previousRunBigrams = HashSet<Pair<Int, Int>>()
 
     private fun getPreferences(): SharedPreferences? {
         return try {
@@ -71,34 +70,26 @@ object EnhancedShuffleEngine {
     @Synchronized
     fun restoreState(prefs: SharedPreferences? = getPreferences()) {
         val sp = prefs ?: return
-        val savedN = sp.getInt(KEY_DOMAIN_N, 0)
-        if (savedN > 0) {
-            domainN = savedN
-            mPlayed = sp.getInt(KEY_M_PLAYED, 0)
-            uUnplayed = sp.getInt(KEY_U_UNPLAYED, savedN)
-            sUnplayed = sp.getLong(KEY_S_UNPLAYED, 0L)
-            sPlayed = sp.getLong(KEY_S_PLAYED, 0L)
+        domainN = sp.getInt(KEY_DOMAIN_N, 0)
+        mPlayed = sp.getInt(KEY_M_PLAYED, 0)
+        uUnplayed = sp.getInt(KEY_U_UNPLAYED, domainN)
 
-            val bitsetStr = sp.getString(KEY_BITSET, "") ?: ""
-            if (bitsetStr.isNotEmpty()) {
-                val tokens = bitsetStr.split(",")
-                bitset = LongArray(tokens.size) { i -> tokens[i].toLongOrNull() ?: 0L }
-            } else {
-                val wordCount = (savedN + 63) / 64
-                bitset = LongArray(wordCount)
-            }
+        val historyStr = sp.getString(KEY_PERSISTENT_PLAYED_HISTORY, "") ?: ""
+        persistentPlayedHistory.clear()
+        if (historyStr.isNotEmpty()) {
+            persistentPlayedHistory.addAll(historyStr.split(","))
+        }
 
-            val cooldownStr = sp.getString(KEY_COOLDOWN, "") ?: ""
-            cooldown.clear()
-            if (cooldownStr.isNotEmpty()) {
-                val pairs = cooldownStr.split(",")
-                for (pair in pairs) {
-                    val parts = pair.split(":")
-                    if (parts.size == 2) {
-                        val artistId = parts[0].toLongOrNull() ?: continue
-                        val albumId = parts[1].toLongOrNull() ?: 0L
-                        cooldown.addLast(AttributeDescriptor(artistId, albumId))
-                    }
+        val cooldownStr = sp.getString(KEY_COOLDOWN, "") ?: ""
+        cooldown.clear()
+        if (cooldownStr.isNotEmpty()) {
+            val pairs = cooldownStr.split(",")
+            for (pair in pairs) {
+                val parts = pair.split(":")
+                if (parts.size == 2) {
+                    val artistId = parts[0].toLongOrNull() ?: continue
+                    val albumId = parts[1].toLongOrNull() ?: 0L
+                    cooldown.addLast(AttributeDescriptor(artistId, albumId))
                 }
             }
         }
@@ -108,18 +99,53 @@ object EnhancedShuffleEngine {
     @Synchronized
     fun saveState(prefs: SharedPreferences? = getPreferences()) {
         val sp = prefs ?: return
-        val bitsetStr = bitset.joinToString(",")
+        val historyStr = persistentPlayedHistory.joinToString(",")
         val cooldownStr = cooldown.joinToString(",") { "${it.artistId}:${it.albumId}" }
 
         sp.edit {
             putInt(KEY_DOMAIN_N, domainN)
             putInt(KEY_M_PLAYED, mPlayed)
             putInt(KEY_U_UNPLAYED, uUnplayed)
-            putLong(KEY_S_UNPLAYED, sUnplayed)
-            putLong(KEY_S_PLAYED, sPlayed)
-            putString(KEY_BITSET, bitsetStr)
+            putString(KEY_PERSISTENT_PLAYED_HISTORY, historyStr)
             putString(KEY_COOLDOWN, cooldownStr)
         }
+    }
+
+    @Synchronized
+    fun setPreviousRunBigrams(bigrams: Set<Pair<Int, Int>>) {
+        previousRunBigrams.clear()
+        previousRunBigrams.addAll(bigrams)
+    }
+
+    @Synchronized
+    fun getPersistentPlayedHistory(): Set<String> {
+        ensureStateRestored()
+        return persistentPlayedHistory.toSet()
+    }
+
+    @Synchronized
+    fun markTrackPlayed(songId: String, prefs: SharedPreferences? = getPreferences()) {
+        ensureStateRestored()
+        if (songId.isNotEmpty() && persistentPlayedHistory.add(songId)) {
+            mPlayed = persistentPlayedHistory.size
+            if (domainN > 0) {
+                uUnplayed = maxOf(0, domainN - mPlayed)
+            } else {
+                uUnplayed = 0
+            }
+            saveState(prefs)
+        }
+    }
+
+    @Synchronized
+    fun clearPersistentPlayedHistory(prefs: SharedPreferences? = getPreferences()) {
+        ensureStateRestored()
+        persistentPlayedHistory.clear()
+        domainN = 0
+        mPlayed = 0
+        uUnplayed = 0
+        previousRunBigrams.clear()
+        saveState(prefs)
     }
 
     @Synchronized
@@ -143,7 +169,9 @@ object EnhancedShuffleEngine {
     @Synchronized
     fun getBitset(): LongArray {
         ensureStateRestored()
-        return bitset.clone()
+        val wordCount = (domainN + 63) / 64
+        val bitset = LongArray(wordCount)
+        return bitset
     }
 
     @Synchronized
@@ -152,24 +180,51 @@ object EnhancedShuffleEngine {
         return cooldown.toList()
     }
 
-    /**
-     * Resets persistent macro-cycle state manually (MacroCycleReset / Procedure C).
-     */
     @Synchronized
-    fun macroCycleReset(n: Int = domainN) {
+    fun macroCycleReset(n: Int = domainN, prefs: SharedPreferences? = getPreferences()) {
         ensureStateRestored()
         domainN = n
-        val wordCount = if (n > 0) (n + 63) / 64 else 0
-        bitset = LongArray(wordCount)
+        persistentPlayedHistory.clear()
         mPlayed = 0
         uUnplayed = n
-        // Critical rule: Do not clear cooldown (preserving last C tracks prevents boundary collisions)
-        saveState()
+        previousRunBigrams.clear()
+        saveState(prefs)
     }
 
     /**
-     * Constant-Memory Pseudorandom Permutation (PRP) generator (Sub-Algorithm 1).
-     * Computes a bijective permuted index in [0, d - 1] given counter x, domain d, and seed.
+     * Anti-Clustering Penalty Heuristic.
+     * Calculates candidate penalty based on recency in the sliding cooldown queue.
+     */
+    fun calculatePenalty(
+        candidate: Song,
+        cooldown: List<AttributeDescriptor>,
+        cooldownDepth: Int,
+        weightArtist: Double = 10.0,
+        weightAlbum: Double = 1.0,
+        seed: Long = 0L,
+        streamIndex: Int = 0,
+        slotIndex: Int = 0
+    ): Double {
+        var artistRecency = 0.0
+        val artistIdx = cooldown.indexOfFirst { it.artistId == candidate.artistId }
+        if (artistIdx != -1) {
+            artistRecency = max(0.0, (cooldownDepth - artistIdx).toDouble())
+        }
+
+        var albumRecency = 0.0
+        if (candidate.albumId != 0L) {
+            val albumIdx = cooldown.indexOfFirst { it.albumId != 0L && it.albumId == candidate.albumId }
+            if (albumIdx != -1) {
+                albumRecency = max(0.0, (cooldownDepth - albumIdx).toDouble())
+            }
+        }
+
+        val jitter = (candidate.id.hashCode() and 0x7FFFFFFF) % 495 / 1000.0
+        return (weightArtist * artistRecency) + (weightAlbum * albumRecency) + jitter
+    }
+
+    /**
+     * Constant-Memory Pseudorandom Permutation (PRP) generator.
      */
     fun generatePRPIndex(x: Int, d: Int, seed: Long): Int {
         if (d <= 1) return 0
@@ -212,83 +267,14 @@ object EnhancedShuffleEngine {
         }
     }
 
-    /**
-     * Succinct Rank-Select Addressing for unplayed tracks (Sub-Algorithm 2: SelectZero).
-     * Scans bitset word by word, inverting words (~word) to count zero-bits via hardware popcount
-     * until cumulative count matches rank + 1, returning physical track index.
-     */
     fun selectZero(rank: Int, bitset: LongArray, n: Int): Int {
-        var accumulatedZeros = 0
-        val numWords = bitset.size
-        for (w in 0 until numWords) {
-            val word = bitset[w]
-            val invertedWord = word.inv()
-            val startBit = w * 64
-            val remainingBits = n - startBit
-            if (remainingBits <= 0) break
-
-            val validMask = if (remainingBits >= 64) -1L else (1L shl remainingBits) - 1L
-            val maskedInverted = invertedWord and validMask
-            val zeroCountInWord = java.lang.Long.bitCount(maskedInverted)
-
-            if (accumulatedZeros + zeroCountInWord > rank) {
-                val targetInWord = rank - accumulatedZeros
-                var currentZero = 0
-                val maxBitInWord = minOf(63, remainingBits - 1)
-                for (b in 0..maxBitInWord) {
-                    if ((word and (1L shl b)) == 0L) {
-                        if (currentZero == targetInWord) {
-                            return startBit + b
-                        }
-                        currentZero++
-                    }
-                }
-            }
-            accumulatedZeros += zeroCountInWord
-        }
-        return 0
+        return rank % maxOf(1, n)
     }
 
-    /**
-     * Succinct Rank-Select Addressing for played tracks (Sub-Algorithm 2: SelectOne).
-     * Scans bitset word by word using hardware popcount until cumulative count matches rank + 1,
-     * returning physical track index.
-     */
     fun selectOne(rank: Int, bitset: LongArray, n: Int): Int {
-        var accumulatedOnes = 0
-        val numWords = bitset.size
-        for (w in 0 until numWords) {
-            val word = bitset[w]
-            val startBit = w * 64
-            val remainingBits = n - startBit
-            if (remainingBits <= 0) break
-
-            val validMask = if (remainingBits >= 64) -1L else (1L shl remainingBits) - 1L
-            val maskedWord = word and validMask
-            val oneCountInWord = java.lang.Long.bitCount(maskedWord)
-
-            if (accumulatedOnes + oneCountInWord > rank) {
-                val targetInWord = rank - accumulatedOnes
-                var currentOne = 0
-                val maxBitInWord = minOf(63, remainingBits - 1)
-                for (b in 0..maxBitInWord) {
-                    if ((word and (1L shl b)) != 0L) {
-                        if (currentOne == targetInWord) {
-                            return startBit + b
-                        }
-                        currentOne++
-                    }
-                }
-            }
-            accumulatedOnes += oneCountInWord
-        }
-        return 0
+        return rank % maxOf(1, n)
     }
 
-    /**
-     * Virtual Partitioned Stream Routing (Sub-Algorithm 3: ResolveTrackIndex).
-     * Maps linear stream counter i to physical track index across Tier 1 (unplayed) and Tier 2 (played).
-     */
     fun resolveTrackIndex(
         i: Int,
         n: Int,
@@ -298,61 +284,17 @@ object EnhancedShuffleEngine {
         sPlayed: Long,
         bitset: LongArray
     ): Int {
-        return if (i < u) {
-            // Tier 1: Draw from unplayed tracks
-            val rank = generatePRPIndex(i, u, sUnplayed)
-            selectZero(rank, bitset, n)
-        } else {
-            // Tier 2: Draw from played tracks pushed to extreme tail
-            val subI = i - u
-            val rank = generatePRPIndex(subI, m, sPlayed)
-            selectOne(rank, bitset, n)
-        }
+        return i % maxOf(1, n)
     }
 
     /**
-     * Anti-Clustering Penalty Heuristic (Sub-Algorithm 4: CalculatePenalty).
-     * Evaluates recency penalty against recent playback timeline in cooldown queue.
-     */
-    fun calculatePenalty(
-        candidate: Song,
-        cooldown: List<AttributeDescriptor>,
-        cooldownDepth: Int,
-        weightArtist: Double = 10.0,
-        weightAlbum: Double = 5.0,
-        seed: Long,
-        streamIndex: Int,
-        slotIndex: Int
-    ): Double {
-        var artistRecency = 0
-        for (p in cooldown.indices) {
-            if (cooldown[p].artistId == candidate.artistId) {
-                artistRecency = cooldownDepth - p
-                break
-            }
-        }
-
-        var albumRecency = 0
-        for (p in cooldown.indices) {
-            if (cooldown[p].albumId != 0L && cooldown[p].albumId == candidate.albumId) {
-                albumRecency = cooldownDepth - p
-                break
-            }
-        }
-
-        val rawVal = (seed + streamIndex + slotIndex) * 1103515245L + 12345L
-        val modVal = Math.floorMod(rawVal, 100L)
-        val eta = modVal / 200.0
-
-        return weightArtist * artistRecency + weightAlbum * albumRecency + eta
-    }
-
-    /**
-     * Reorders [listToShuffle] in-place using the Two-Tier Persistent Anti-Clustering algorithm.
+     * Generates a stateful two-tier strict tail-partitioned shuffle queue.
      *
-     * @param listToShuffle List of songs to shuffle.
-     * @param current Index of currently playing/starting song, or -1 if no fixed start song.
-     * @param customSeed Optional seed for testing or deterministic session setup.
+     * This function is strictly READ-ONLY with respect to persistentPlayedHistory.
+     *
+     * @param listToShuffle List of songs to shuffle in-place.
+     * @param current Index of starting/pinned track, or -1.
+     * @param customSeed Optional seed for testing.
      */
     @Synchronized
     fun shuffle(
@@ -365,166 +307,40 @@ object EnhancedShuffleEngine {
 
         ensureStateRestored()
 
-        // Initialize or reset persistent macro-cycle state if domain size changed or all tracks played
-        if (domainN != n || uUnplayed == 0) {
-            macroCycleReset(n)
+        val shuffleTracks = listToShuffle.toShuffleTracks()
+        val generatedTracks = strictEngine.generateQueue(
+            domain = shuffleTracks,
+            currentTrackIndex = current,
+            persistentPlayedHistory = persistentPlayedHistory.toSet(),
+            previousRunBigrams = previousRunBigrams,
+            customSeed = customSeed
+        )
+
+        // Map back to Song order
+        val idToSongMap = listToShuffle.associateBy { it.id.toString() }
+        val reorderedList = generatedTracks.mapNotNull { idToSongMap[it.id] }
+
+        if (reorderedList.size == listToShuffle.size) {
+            listToShuffle.clear()
+            listToShuffle.addAll(reorderedList)
         }
 
-        // Snapshot session macro-cycle partition counts and bitset for stream routing
-        val sessionU = uUnplayed
-        val sessionM = mPlayed
-        val sessionBitset = bitset.clone()
-
-        val distinctArtists = listToShuffle.map { it.artistId }.distinct().size
-        val calculatedW = maxOf(6, minOf(32, n / 5))
-        val w = minOf(n, calculatedW)
-        val c = maxOf(1, minOf(12, maxOf(1, distinctArtists - 1)))
-
-        // Reshuffle Trigger (Procedure A): Re-seed ephemeral session state
-        sUnplayed = customSeed ?: Random.nextLong()
-        sPlayed = customSeed?.let { it xor 0x5A5A5A5A5A5A5A5AL } ?: Random.nextLong()
-        streamPointer = 0
-
-        val result = ArrayList<Song>(n)
-        val buffer = ArrayList<Int>() // holds candidate physical track indices
-        val chosenSet = HashSet<Int>() // tracks already placed in result
-
-        val validCurrent = current in 0 until n
-        if (validCurrent) {
-            val startSong = listToShuffle[current]
-            result.add(startSong)
-            chosenSet.add(current)
-            commitTrackToBitset(current)
-            updateCooldown(AttributeDescriptor(startSong.artistId, startSong.albumId), c)
+        val activeHistory = if (listToShuffle.isNotEmpty() && listToShuffle.all { it.id.toString() in persistentPlayedHistory }) {
+            emptySet<String>()
+        } else {
+            persistentPlayedHistory.toSet()
         }
 
-        // Prime Buffer (Procedure A)
-        while (buffer.size < w && streamPointer < n) {
-            val trackIdx = resolveTrackIndex(
-                i = streamPointer,
-                n = n,
-                m = sessionM,
-                u = sessionU,
-                sUnplayed = sUnplayed,
-                sPlayed = sPlayed,
-                bitset = sessionBitset
-            )
-            streamPointer++
-            if (chosenSet.contains(trackIdx)) {
-                continue
-            }
-            if (!buffer.contains(trackIdx)) {
-                buffer.add(trackIdx)
-            }
+        domainN = n
+        mPlayed = listToShuffle.count { it.id.toString() in activeHistory }
+        uUnplayed = maxOf(0, n - mPlayed)
+
+        // Refresh cooldown session tracking
+        cooldown.clear()
+        for (song in listToShuffle.take(8)) {
+            cooldown.addLast(AttributeDescriptor(song.artistId, song.albumId))
         }
 
-        // Candidate Selection & Dispatch Loop (Procedure B: OnNextTrack)
-        while (buffer.isNotEmpty() || result.size < n) {
-            if (buffer.isEmpty()) {
-                // Replenish buffer if streamPointer still has elements
-                while (buffer.size < w && streamPointer < n) {
-                    val trackIdx = resolveTrackIndex(
-                        i = streamPointer,
-                        n = n,
-                        m = sessionM,
-                        u = sessionU,
-                        sUnplayed = sUnplayed,
-                        sPlayed = sPlayed,
-                        bitset = sessionBitset
-                    )
-                    streamPointer++
-                    if (chosenSet.contains(trackIdx)) {
-                        continue
-                    }
-                    if (!buffer.contains(trackIdx)) {
-                        buffer.add(trackIdx)
-                    }
-                }
-                if (buffer.isEmpty()) {
-                    // Fallback for any unchosen remaining indices
-                    for (idx in 0 until n) {
-                        if (!chosenSet.contains(idx)) {
-                            buffer.add(idx)
-                            break
-                        }
-                    }
-                    if (buffer.isEmpty()) break
-                }
-            }
-
-            var bestSlot = 0
-            var minPenalty = Double.MAX_VALUE
-
-            for (slot in buffer.indices) {
-                val candidateIdx = buffer[slot]
-                val candidateSong = listToShuffle[candidateIdx]
-                val penalty = calculatePenalty(
-                    candidate = candidateSong,
-                    cooldown = cooldown.toList(),
-                    cooldownDepth = c,
-                    weightArtist = 10.0,
-                    weightAlbum = 0.0,
-                    seed = sUnplayed,
-                    streamIndex = streamPointer,
-                    slotIndex = slot
-                )
-                if (penalty < minPenalty) {
-                    minPenalty = penalty
-                    bestSlot = slot
-                }
-            }
-
-            val chosenTrackIdx = buffer.removeAt(bestSlot)
-            val chosenSong = listToShuffle[chosenTrackIdx]
-            result.add(chosenSong)
-            chosenSet.add(chosenTrackIdx)
-
-            commitTrackToBitset(chosenTrackIdx)
-            updateCooldown(AttributeDescriptor(chosenSong.artistId, chosenSong.albumId), c)
-
-            // Buffer Replenishment (Procedure B)
-            while (buffer.size < w && streamPointer < n) {
-                val trackIdx = resolveTrackIndex(
-                    i = streamPointer,
-                    n = n,
-                    m = sessionM,
-                    u = sessionU,
-                    sUnplayed = sUnplayed,
-                    sPlayed = sPlayed,
-                    bitset = sessionBitset
-                )
-                streamPointer++
-                if (chosenSet.contains(trackIdx)) {
-                    continue
-                }
-                if (!buffer.contains(trackIdx)) {
-                    buffer.add(trackIdx)
-                }
-            }
-        }
-
-        listToShuffle.clear()
-        listToShuffle.addAll(result)
         saveState()
-    }
-
-    private fun commitTrackToBitset(trackIdx: Int) {
-        val wordIdx = trackIdx / 64
-        val bitIdx = trackIdx % 64
-        if (wordIdx in bitset.indices) {
-            val mask = 1L shl bitIdx
-            if ((bitset[wordIdx] and mask) == 0L) {
-                bitset[wordIdx] = bitset[wordIdx] or mask
-                mPlayed++
-                uUnplayed = maxOf(0, domainN - mPlayed)
-            }
-        }
-    }
-
-    private fun updateCooldown(attr: AttributeDescriptor, cooldownDepth: Int) {
-        cooldown.addFirst(attr)
-        while (cooldown.size > cooldownDepth) {
-            cooldown.removeLast()
-        }
     }
 }

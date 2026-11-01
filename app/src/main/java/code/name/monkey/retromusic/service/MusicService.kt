@@ -81,6 +81,7 @@ import code.name.monkey.retromusic.extensions.uri
 import code.name.monkey.retromusic.glide.BlurTransformation
 import code.name.monkey.retromusic.glide.RetroGlideExtension.getSongModel
 import code.name.monkey.retromusic.glide.RetroGlideExtension.songCoverOptions
+import code.name.monkey.retromusic.helper.EnhancedShuffleEngine
 import code.name.monkey.retromusic.helper.ShuffleHelper.makeShuffleList
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.model.Song.Companion.emptySong
@@ -148,6 +149,23 @@ class MusicService : MediaBrowserServiceCompat(),
     private val mMusicProvider = get<AutoMusicProvider>(AutoMusicProvider::class.java)
     private lateinit var storage: PersistentStorage
     private var trackEndedByCrossfade = false
+    private var currentSongStartTimestamp: Long = -1L
+    private var lastPlayedSong: Song = Song.emptySong
+
+    private fun checkAndCommitPlaybackConsumption(isEnded: Boolean = false) {
+        if (lastPlayedSong != Song.emptySong && lastPlayedSong.id != -1L) {
+            val playDuration: Long = if (currentSongStartTimestamp > 0) {
+                System.currentTimeMillis() - currentSongStartTimestamp
+            } else 0L
+
+            val progressMillis: Long = try { songProgressMillis.toLong() } catch (e: Exception) { 0L }
+            val isConsumed = isEnded || playDuration >= 30000L || progressMillis >= 30000L
+            if (isConsumed) {
+                EnhancedShuffleEngine.markTrackPlayed(lastPlayedSong.id.toString())
+            }
+        }
+    }
+
     private val serviceScope = CoroutineScope(Job() + Main)
 
     @JvmField
@@ -727,6 +745,7 @@ class MusicService : MediaBrowserServiceCompat(),
     }
 
     override fun onTrackEnded() {
+        checkAndCommitPlaybackConsumption(isEnded = true)
         acquireWakeLock()
         // if there is a timer finished, don't continue
         if (pendingQuit
@@ -1246,6 +1265,9 @@ class MusicService : MediaBrowserServiceCompat(),
 
     @Synchronized
     private fun openCurrent(completion: (success: Boolean) -> Unit) {
+        checkAndCommitPlaybackConsumption(isEnded = false)
+        lastPlayedSong = currentSong
+        currentSongStartTimestamp = System.currentTimeMillis()
         val force = if (!trackEndedByCrossfade) {
             true
         } else {

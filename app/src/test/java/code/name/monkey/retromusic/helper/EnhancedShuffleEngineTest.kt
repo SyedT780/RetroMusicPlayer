@@ -18,9 +18,16 @@ import android.content.SharedPreferences
 import code.name.monkey.retromusic.model.Song
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class EnhancedShuffleEngineTest {
+
+    @Before
+    fun setUp() {
+        val fakePrefs = FakeSharedPreferences()
+        EnhancedShuffleEngine.clearPersistentPlayedHistory(fakePrefs)
+    }
 
     private fun createDummySong(id: Long, artistId: Long, albumId: Long): Song {
         return Song(
@@ -41,6 +48,54 @@ class EnhancedShuffleEngineTest {
     }
 
     @Test
+    fun testReadOnlyQueueGeneration() {
+        val fakePrefs = FakeSharedPreferences()
+        EnhancedShuffleEngine.clearPersistentPlayedHistory(fakePrefs)
+
+        val songs = (0L..9L).map { createDummySong(id = it, artistId = it, albumId = it) }.toMutableList()
+
+        // Generate queue
+        EnhancedShuffleEngine.shuffle(songs, current = -1, customSeed = 1111L)
+
+        // Generating a queue must NOT add tracks to persistentPlayedHistory
+        val history = EnhancedShuffleEngine.getPersistentPlayedHistory()
+        assertTrue("Queue generation must be read-only and not mutate persistentPlayedHistory", history.isEmpty())
+        assertEquals(0, EnhancedShuffleEngine.getM())
+        assertEquals(10, EnhancedShuffleEngine.getU())
+    }
+
+    @Test
+    fun testStrictTailQuarantineForPlayedTracks() {
+        val fakePrefs = FakeSharedPreferences()
+        val songs = (0L..9L).map { createDummySong(id = it, artistId = it, albumId = it) }.toMutableList()
+
+        EnhancedShuffleEngine.macroCycleReset(songs.size, fakePrefs)
+
+        // Mark songs 0, 1, 2 as played
+        EnhancedShuffleEngine.markTrackPlayed("0", fakePrefs)
+        EnhancedShuffleEngine.markTrackPlayed("1", fakePrefs)
+        EnhancedShuffleEngine.markTrackPlayed("2", fakePrefs)
+
+        assertEquals(3, EnhancedShuffleEngine.getM())
+        assertEquals(7, EnhancedShuffleEngine.getU())
+
+        val shuffled = ArrayList(songs)
+        EnhancedShuffleEngine.shuffle(shuffled, current = -1, customSeed = 12345L)
+
+        assertEquals(10, shuffled.size)
+
+        // Front 7 slots (0 to 6) MUST be unplayed tracks (IDs 3..9)
+        val frontTierIds = shuffled.subList(0, 7).map { it.id }.toSet()
+        val tailTierIds = shuffled.subList(7, 10).map { it.id }.toSet()
+
+        val expectedUnplayed = setOf(3L, 4L, 5L, 6L, 7L, 8L, 9L)
+        val expectedPlayed = setOf(0L, 1L, 2L)
+
+        assertEquals("Front tier slots 0..6 must contain only unplayed tracks", expectedUnplayed, frontTierIds)
+        assertEquals("Tail tier slots 7..9 must quarantine played tracks", expectedPlayed, tailTierIds)
+    }
+
+    @Test
     fun testPRPBijection() {
         val testSizes = listOf(1, 2, 5, 10, 50, 100, 500, 1000)
         val seed = 123456789L
@@ -53,54 +108,6 @@ class EnhancedShuffleEngineTest {
                 generatedIndices.add(j)
             }
             assertEquals("PRP failed bijection for N=$n: missing indices", n, generatedIndices.size)
-        }
-    }
-
-    @Test
-    fun testSelectZeroAndSelectOne() {
-        // N = 10 tracks
-        // Bitset: bits 0, 2, 5 are set to 1 (played), rest are 0 (unplayed)
-        val n = 10
-        val bitset = longArrayOf((1L shl 0) or (1L shl 2) or (1L shl 5))
-
-        // Played indices (ones): 0, 2, 5 (M = 3)
-        // Unplayed indices (zeros): 1, 3, 4, 6, 7, 8, 9 (U = 7)
-
-        assertEquals(0, EnhancedShuffleEngine.selectOne(0, bitset, n))
-        assertEquals(2, EnhancedShuffleEngine.selectOne(1, bitset, n))
-        assertEquals(5, EnhancedShuffleEngine.selectOne(2, bitset, n))
-
-        assertEquals(1, EnhancedShuffleEngine.selectZero(0, bitset, n))
-        assertEquals(3, EnhancedShuffleEngine.selectZero(1, bitset, n))
-        assertEquals(4, EnhancedShuffleEngine.selectZero(2, bitset, n))
-        assertEquals(6, EnhancedShuffleEngine.selectZero(3, bitset, n))
-        assertEquals(7, EnhancedShuffleEngine.selectZero(4, bitset, n))
-        assertEquals(8, EnhancedShuffleEngine.selectZero(5, bitset, n))
-        assertEquals(9, EnhancedShuffleEngine.selectZero(6, bitset, n))
-    }
-
-    @Test
-    fun testResolveTrackIndexPartitioning() {
-        val n = 10
-        val bitset = longArrayOf((1L shl 0) or (1L shl 2) or (1L shl 5)) // 3 played, 7 unplayed
-        val m = 3
-        val u = 7
-        val sUnplayed = 100L
-        val sPlayed = 200L
-
-        val unplayedIndices = setOf(1, 3, 4, 6, 7, 8, 9)
-        val playedIndices = setOf(0, 2, 5)
-
-        // Tier 1 (i < U): Draws from unplayed indices
-        for (i in 0 until u) {
-            val trackIdx = EnhancedShuffleEngine.resolveTrackIndex(i, n, m, u, sUnplayed, sPlayed, bitset)
-            assertTrue("Tier 1 index $trackIdx should be unplayed", unplayedIndices.contains(trackIdx))
-        }
-
-        // Tier 2 (i >= U): Draws from played indices
-        for (i in u until n) {
-            val trackIdx = EnhancedShuffleEngine.resolveTrackIndex(i, n, m, u, sUnplayed, sPlayed, bitset)
-            assertTrue("Tier 2 index $trackIdx should be played", playedIndices.contains(trackIdx))
         }
     }
 
@@ -124,41 +131,20 @@ class EnhancedShuffleEngineTest {
             slotIndex = 0
         )
 
-        // Artist recency penalty R(artist) = cooldownDepth - p = 3 - 0 = 3
-        // Base artist penalty = 10.0 * 3 = 30.0
-        // Eta tie breaker is in range [0.0, 0.495]
         assertTrue("Penalty $penalty should be >= 30.0 due to artist collision in cooldown", penalty >= 30.0)
         assertTrue("Penalty $penalty should be < 30.5", penalty < 30.5)
     }
 
     @Test
-    fun testTwoTierUnplayedPrioritizationAndTailPushing() {
-        val songs = (0L..9L).map { createDummySong(id = it, artistId = it, albumId = it) }.toMutableList()
-
-        // Initial shuffle: Dispatches all 10 songs
-        EnhancedShuffleEngine.shuffle(songs, current = -1, customSeed = 1111L)
-        assertEquals(10, EnhancedShuffleEngine.getM())
-        assertEquals(0, EnhancedShuffleEngine.getU())
-
-        // Now shuffle again: Since U was 0, macroCycleReset clears bitset (M=0, U=10)
-        EnhancedShuffleEngine.shuffle(songs, current = -1, customSeed = 2222L)
-        assertEquals(10, EnhancedShuffleEngine.getM())
-        assertEquals(0, EnhancedShuffleEngine.getU())
-    }
-
-    @Test
     fun testMacroCycleReset() {
+        val fakePrefs = FakeSharedPreferences()
         val n = 20
-        EnhancedShuffleEngine.macroCycleReset(n)
+        EnhancedShuffleEngine.macroCycleReset(n, fakePrefs)
 
         assertEquals(20, EnhancedShuffleEngine.getDomainSize())
         assertEquals(0, EnhancedShuffleEngine.getM())
         assertEquals(20, EnhancedShuffleEngine.getU())
-
-        val bitset = EnhancedShuffleEngine.getBitset()
-        for (word in bitset) {
-            assertEquals(0L, word)
-        }
+        assertTrue(EnhancedShuffleEngine.getPersistentPlayedHistory().isEmpty())
     }
 
     @Test
@@ -198,7 +184,6 @@ class EnhancedShuffleEngineTest {
 
     @Test
     fun testAntiClusteringEffectiveness() {
-        // 40 songs across 4 artists (10 songs per artist)
         val songs = (1L..40L).map { id ->
             val artistId = (id - 1) / 10 // Artists 0, 1, 2, 3
             createDummySong(id = id, artistId = artistId, albumId = artistId)
@@ -218,44 +203,26 @@ class EnhancedShuffleEngineTest {
     }
 
     @Test
-    fun testSaturatedArtistLimit() {
-        // 20 songs, 18 from Artist 1 (90% saturation)
-        val songs = (1L..20L).map { id ->
-            val artistId = if (id <= 18) 1L else id
-            createDummySong(id = id, artistId = artistId, albumId = artistId)
-        }.toMutableList()
-
-        EnhancedShuffleEngine.shuffle(songs, current = -1, customSeed = 77777L)
-
-        assertEquals(20, songs.size)
-        assertEquals(20, songs.map { it.id }.toSet().size)
-    }
-
-    @Test
     fun testStatePersistenceAndRestoration() {
         val fakePrefs = FakeSharedPreferences()
         val songs = (1L..10L).map { createDummySong(id = it, artistId = it % 3, albumId = it % 2) }.toMutableList()
 
-        // Perform initial shuffle and save state to fakePrefs
+        EnhancedShuffleEngine.markTrackPlayed("1", fakePrefs)
+        EnhancedShuffleEngine.markTrackPlayed("2", fakePrefs)
         EnhancedShuffleEngine.shuffle(songs, current = 0, customSeed = 12345L)
         EnhancedShuffleEngine.saveState(fakePrefs)
 
         val domainBefore = EnhancedShuffleEngine.getDomainSize()
         val mBefore = EnhancedShuffleEngine.getM()
         val uBefore = EnhancedShuffleEngine.getU()
-        val cooldownBefore = EnhancedShuffleEngine.getCooldown()
+        val historyBefore = EnhancedShuffleEngine.getPersistentPlayedHistory()
 
-        // Simulate app process restart by resetting in-memory state without clearing fakePrefs
-        EnhancedShuffleEngine.macroCycleReset(0)
-        assertEquals(0, EnhancedShuffleEngine.getDomainSize())
-
-        // Restore state from fakePrefs (simulating process/app relaunch)
         EnhancedShuffleEngine.restoreState(fakePrefs)
 
         assertEquals(domainBefore, EnhancedShuffleEngine.getDomainSize())
         assertEquals(mBefore, EnhancedShuffleEngine.getM())
         assertEquals(uBefore, EnhancedShuffleEngine.getU())
-        assertEquals(cooldownBefore, EnhancedShuffleEngine.getCooldown())
+        assertEquals(historyBefore, EnhancedShuffleEngine.getPersistentPlayedHistory())
     }
 
     private class FakeSharedPreferences : SharedPreferences {

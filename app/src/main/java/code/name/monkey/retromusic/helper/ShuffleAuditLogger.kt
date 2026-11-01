@@ -18,6 +18,7 @@ import android.os.Environment
 import android.util.Log
 import code.name.monkey.retromusic.App
 import code.name.monkey.retromusic.model.Song
+import code.name.monkey.retromusic.visualizer.ReactiveShuffleVisualizer
 import code.name.monkey.retromusic.visualizer.ShuffleVisualRecord
 import code.name.monkey.retromusic.visualizer.TrajectoryMath
 import java.io.File
@@ -98,6 +99,7 @@ object ShuffleAuditLogger {
     fun resetHistory() {
         shuffleHistory.clear()
         domainIdMap.clear()
+        ReactiveShuffleVisualizer.instance.resetHistory()
     }
 
     @Synchronized
@@ -310,6 +312,8 @@ object ShuffleAuditLogger {
         val permutedIndices = IntArray(shuffledList.size) { i ->
             domainIdMap[shuffledList[i].id] ?: i
         }
+
+        ReactiveShuffleVisualizer.instance.recordShuffleRun(shuffledList)
 
         shuffleHistory.add(
             ShuffleRun(
