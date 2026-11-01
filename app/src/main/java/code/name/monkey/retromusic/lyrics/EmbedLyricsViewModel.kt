@@ -8,9 +8,9 @@ import code.name.monkey.retromusic.lyrics.model.DisambiguationRequest
 import code.name.monkey.retromusic.lyrics.model.SyncDashboardStats
 import code.name.monkey.retromusic.lyrics.network.LrclibRepository
 import code.name.monkey.retromusic.lyrics.tagger.AudioTaggerHelper
-import code.name.monkey.retromusic.lyrics.transliteration.LyricsTransliterator
 import code.name.monkey.retromusic.model.Song
 import code.name.monkey.retromusic.repository.SongRepository
+import code.name.monkey.retromusic.util.LyricUtil
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,12 +36,32 @@ class EmbedLyricsViewModel(
     private val _activePrompt = MutableStateFlow<DisambiguationRequest?>(null)
     val activePrompt: StateFlow<DisambiguationRequest?> = _activePrompt.asStateFlow()
 
+    private val _deferredDisambiguations = MutableStateFlow<List<DisambiguationRequest>>(emptyList())
+    val deferredDisambiguations: StateFlow<List<DisambiguationRequest>> = _deferredDisambiguations.asStateFlow()
+
+    val skipExistingEmbedded = MutableStateFlow(true)
+
     private var workerJob: Job? = null
+
+    fun toggleSkipExistingEmbedded(skip: Boolean) {
+        skipExistingEmbedded.value = skip
+    }
+
+    fun reOpenPendingDecisions() {
+        if (_activePrompt.value == null && _deferredDisambiguations.value.isNotEmpty()) {
+            val remaining = _deferredDisambiguations.value
+            val firstRequest = remaining.first()
+            _deferredDisambiguations.update { it.drop(1) }
+            _activePrompt.value = firstRequest
+        }
+    }
 
     fun startSync() {
         if (workerJob?.isActive == true) return
 
         workerJob = viewModelScope.launch(Dispatchers.IO) {
+            _deferredDisambiguations.value = emptyList()
+            _activePrompt.value = null
             _stats.value = SyncDashboardStats(
                 isRunning = true,
                 currentStatusMessage = "Scanning music library..."
@@ -65,7 +85,7 @@ class EmbedLyricsViewModel(
             }
             addLog("Found ${validSongs.size} audio files in library.")
 
-            val concurrencySemaphore = Semaphore(4)
+            val concurrencySemaphore = Semaphore(8)
 
             val tasks = validSongs.map { song ->
                 launch {
@@ -79,20 +99,34 @@ class EmbedLyricsViewModel(
             }
 
             tasks.joinAll()
-            _stats.update {
-                it.copy(
-                    isRunning = false,
-                    currentStatusMessage = "Sync Completed!"
-                )
+
+            val queuedRequests = _deferredDisambiguations.value
+            if (queuedRequests.isNotEmpty()) {
+                _stats.update {
+                    it.copy(
+                        currentStatusMessage = "Scan complete. ${queuedRequests.size} tracks await decision."
+                    )
+                }
+                addLog("Scan complete. Starting decision phase for ${queuedRequests.size} tracks...")
+                val firstRequest = queuedRequests.first()
+                _deferredDisambiguations.update { it.drop(1) }
+                _activePrompt.value = firstRequest
+            } else {
+                _stats.update {
+                    it.copy(
+                        isRunning = false,
+                        currentStatusMessage = "Sync Completed!"
+                    )
+                }
+                addLog("Sync completed successfully.")
             }
-            addLog("Sync completed successfully.")
         }
     }
 
     private suspend fun processSingleSong(song: Song) {
         val file = File(song.data)
 
-        if (AudioTaggerHelper.hasSyncedLyrics(song.data)) {
+        if (skipExistingEmbedded.value && (AudioTaggerHelper.hasSyncedLyrics(song.data) || LyricUtil.getEmbeddedSyncedLyrics(song.data) != null || LyricUtil.getSyncedLyricsFile(song) != null)) {
             _stats.update {
                 it.copy(
                     processedFiles = it.processedFiles + 1,
@@ -133,13 +167,22 @@ class EmbedLyricsViewModel(
         } else if (candidates.size >= 2 && candidates[0].score >= 0.85f && (candidates[0].score - candidates[1].score) >= 0.12f) {
             candidates[0]
         } else {
+            null
+        }
+
+        if (chosenCandidate != null) {
+            embedLyricsForCandidate(song, file, chosenCandidate, isFromDeferred = false)
+        } else {
             _stats.update {
-                it.copy(ambiguousPromptCount = it.ambiguousPromptCount + 1)
+                it.copy(
+                    processedFiles = it.processedFiles + 1,
+                    ambiguousPromptCount = it.ambiguousPromptCount + 1
+                )
             }
-            addLog("[Disambiguation] ${song.title} - Awaiting decision")
+            addLog("[Awaiting Decision] ${song.title} - Queued for review")
 
             val deferred = CompletableDeferred<CandidateRecord?>()
-            _activePrompt.value = DisambiguationRequest(
+            val request = DisambiguationRequest(
                 filePath = song.data,
                 fileName = file.name,
                 localTitle = song.title,
@@ -148,50 +191,106 @@ class EmbedLyricsViewModel(
                 candidates = candidates.take(3),
                 deferredChoice = deferred
             )
-            deferred.await()
-        }
-
-        if (chosenCandidate != null) {
-            val transliterated = LyricsTransliterator.transliterateLrc(chosenCandidate.syncedLyrics)
-            val success = AudioTaggerHelper.embedLyrics(context, file, transliterated)
-
-            if (success) {
-                _stats.update {
-                    it.copy(
-                        processedFiles = it.processedFiles + 1,
-                        embeddedCount = it.embeddedCount + 1
-                    )
-                }
-                addLog("[Embedded] ${song.title}")
-            } else {
-                _stats.update {
-                    it.copy(
-                        processedFiles = it.processedFiles + 1,
-                        failedCount = it.failedCount + 1
-                    )
-                }
-                addLog("[Error Embedding] ${song.title}")
+            _deferredDisambiguations.update { current ->
+                current + request
             }
+        }
+    }
+
+    private suspend fun embedLyricsForCandidate(
+        song: Song,
+        file: File,
+        candidate: CandidateRecord,
+        isFromDeferred: Boolean
+    ) {
+        val success = AudioTaggerHelper.embedLyrics(context, file, candidate.syncedLyrics)
+
+        if (success) {
+            _stats.update {
+                it.copy(
+                    processedFiles = if (isFromDeferred) it.processedFiles else it.processedFiles + 1,
+                    embeddedCount = it.embeddedCount + 1,
+                    ambiguousPromptCount = if (isFromDeferred) (it.ambiguousPromptCount - 1).coerceAtLeast(0) else it.ambiguousPromptCount
+                )
+            }
+            addLog("[Embedded] ${song.title}")
         } else {
             _stats.update {
                 it.copy(
-                    processedFiles = it.processedFiles + 1,
-                    failedCount = it.failedCount + 1
+                    processedFiles = if (isFromDeferred) it.processedFiles else it.processedFiles + 1,
+                    failedCount = it.failedCount + 1,
+                    ambiguousPromptCount = if (isFromDeferred) (it.ambiguousPromptCount - 1).coerceAtLeast(0) else it.ambiguousPromptCount
                 )
             }
-            addLog("[Skipped] ${song.title}")
+            addLog("[Error Embedding] ${song.title}")
         }
     }
 
     fun resolveUserChoice(candidate: CandidateRecord?) {
-        _activePrompt.value?.deferredChoice?.complete(candidate)
-        _activePrompt.value = null
+        val currentPrompt = _activePrompt.value ?: return
+        currentPrompt.deferredChoice.complete(candidate)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            if (candidate != null) {
+                val file = File(currentPrompt.filePath)
+                if (file.exists()) {
+                    val song = Song(
+                        id = -1,
+                        title = currentPrompt.localTitle,
+                        trackNumber = -1,
+                        year = -1,
+                        duration = 0,
+                        data = currentPrompt.filePath,
+                        dateModified = 0,
+                        albumId = -1,
+                        albumName = currentPrompt.localAlbum,
+                        artistId = -1,
+                        artistName = currentPrompt.localArtist,
+                        composer = null,
+                        albumArtist = null
+                    )
+                    embedLyricsForCandidate(song, file, candidate, isFromDeferred = true)
+                }
+            } else {
+                _stats.update {
+                    it.copy(
+                        failedCount = it.failedCount + 1,
+                        ambiguousPromptCount = (it.ambiguousPromptCount - 1).coerceAtLeast(0)
+                    )
+                }
+                addLog("[Skipped] ${currentPrompt.localTitle}")
+            }
+
+            processNextDeferred()
+        }
+    }
+
+    private fun processNextDeferred() {
+        val remaining = _deferredDisambiguations.value
+        if (remaining.isNotEmpty()) {
+            val nextRequest = remaining.first()
+            _deferredDisambiguations.update { it.drop(1) }
+            _activePrompt.value = nextRequest
+        } else {
+            _activePrompt.value = null
+            _stats.update {
+                it.copy(
+                    isRunning = false,
+                    currentStatusMessage = "All done!"
+                )
+            }
+            addLog("All sync decisions completed.")
+        }
     }
 
     fun cancelSync() {
         workerJob?.cancel()
         _activePrompt.value?.deferredChoice?.cancel()
         _activePrompt.value = null
+        _deferredDisambiguations.value.forEach { request ->
+            request.deferredChoice.cancel()
+        }
+        _deferredDisambiguations.value = emptyList()
         _stats.update {
             it.copy(
                 isRunning = false,

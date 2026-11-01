@@ -12,8 +12,9 @@ class LyricsTransliteratorTest {
         val rawLrc = "[00:12.34] Hello World\n[01:23.456] This is a test"
         val output = LyricsTransliterator.transliterateLrc(rawLrc)
 
-        assertTrue(output.contains("[00:12.34] Hello World"))
-        assertTrue(output.contains("[01:23.456] This is a test"))
+        assertTrue(output.text.contains("[00:12.34] Hello World"))
+        assertTrue(output.text.contains("[01:23.456] This is a test"))
+        assertEquals(false, output.wasTransliterated)
     }
 
     @Test
@@ -21,20 +22,23 @@ class LyricsTransliteratorTest {
         val rawLrc = "[00:12.34][00:56.78] Repeated chorus"
         val output = LyricsTransliterator.transliterateLrc(rawLrc)
 
-        assertTrue(output.contains("[00:12.34][00:56.78] Repeated chorus"))
+        assertTrue(output.text.contains("[00:12.34][00:56.78] Repeated chorus"))
+        assertEquals(false, output.wasTransliterated)
     }
 
     @Test
     fun testPureAsciiPassthrough() {
         val input = "Simple English text 123!"
-        val output = LyricsTransliterator.transliterateString(input)
+        val output = LyricsTransliterator.transliterateLrc(input)
 
-        assertEquals(input, output)
+        assertEquals(input, output.text)
+        assertEquals(false, output.wasTransliterated)
     }
 
     @Test
     fun testEmptyInputHandling() {
         val output = LyricsTransliterator.transliterateLrc("")
-        assertEquals("", output)
+        assertEquals("", output.text)
+        assertEquals(false, output.wasTransliterated)
     }
 }

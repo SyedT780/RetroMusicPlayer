@@ -21,10 +21,13 @@ import android.graphics.Color
 import android.graphics.drawable.AnimatedVectorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.util.TypedValue
 import android.view.MenuItem
 import android.view.View
+import android.view.animation.PathInterpolator
 import android.widget.ImageButton
+import android.widget.Toast
+import java.io.File
+import java.io.FileWriter
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
@@ -32,6 +35,7 @@ import androidx.core.graphics.ColorUtils
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import code.name.monkey.appthemehelper.util.ToolbarContentTintHelper
 import code.name.monkey.retromusic.R
 import code.name.monkey.retromusic.adapter.song.PlayingQueueAdapter
@@ -60,12 +64,16 @@ import code.name.monkey.retromusic.model.lyrics.Lyrics
 import code.name.monkey.retromusic.service.MusicService
 import code.name.monkey.retromusic.util.LyricUtil
 import code.name.monkey.retromusic.util.MusicUtil
-import code.name.monkey.retromusic.util.PreferenceUtil
 import code.name.monkey.retromusic.util.color.FullIslandColorProcessor
 import code.name.monkey.retromusic.util.color.IslandPalette
 import code.name.monkey.retromusic.util.color.MediaNotificationProcessor
 import com.bumptech.glide.Glide
 import com.google.android.material.slider.Slider
+import com.h6ah4i.android.widget.advrecyclerview.animator.DraggableItemAnimator
+import com.h6ah4i.android.widget.advrecyclerview.draggable.RecyclerViewDragDropManager
+import com.h6ah4i.android.widget.advrecyclerview.swipeable.RecyclerViewSwipeManager
+import com.h6ah4i.android.widget.advrecyclerview.touchguard.RecyclerViewTouchActionGuardManager
+import com.h6ah4i.android.widget.advrecyclerview.utils.WrapperAdapterUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,9 +91,15 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
 
     private lateinit var progressViewUpdateHelper: MusicProgressViewUpdateHelper
     private var playingQueueAdapter: PlayingQueueAdapter? = null
+    private var wrappedAdapter: RecyclerView.Adapter<*>? = null
+    private var recyclerViewDragDropManager: RecyclerViewDragDropManager? = null
+    private var recyclerViewSwipeManager: RecyclerViewSwipeManager? = null
+    private var recyclerViewTouchActionGuardManager: RecyclerViewTouchActionGuardManager? = null
 
     private var lyrics: Lyrics? = null
     private var activeLineIndex: Int = -2
+    private var isLyricsOverlayEnabled: Boolean = false
+    private var wasLyricsOverlayActiveBeforeEditor: Boolean = false
 
     override fun playerToolbar(): Toolbar {
         return binding.playerToolbar
@@ -127,12 +141,17 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
     private fun setupIslandInteractions() {
         binding.upNextPill.setOnClickListener { toggleQueueIsland() }
         binding.closeQueueButton.setOnClickListener { toggleQueueIsland(false) }
+        binding.saveLyricsButton.setOnClickListener { saveEditedLyrics() }
+        binding.closeLyricsEditorButton.setOnClickListener { toggleLyricsEditor(false) }
+        binding.searchLyricsOnlineButton.setOnClickListener { searchLyricsOnline() }
+        binding.runSearchReplaceButton.setOnClickListener { runSearchReplaceInLyrics() }
         binding.title.setOnClickListener { goToAlbum(requireActivity()) }
     }
 
     private fun toggleQueueIsland(show: Boolean? = null) {
         val targetVisibility = show ?: !binding.queueIslandContainer.isVisible
         if (targetVisibility) {
+            binding.lyricsEditorIslandContainer.hide()
             setupQueueAdapter()
             binding.queueIslandContainer.show()
             binding.upNextIcon.animate().rotation(90f).setDuration(250).start()
@@ -143,22 +162,201 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
     }
 
     private fun toggleLyricsOverlay(show: Boolean? = null) {
-        if (lyrics !is AbsSynchronizedLyrics || !(lyrics as AbsSynchronizedLyrics).isSynchronized) {
-            return
-        }
-        val targetVisibility = show ?: !binding.lyricsIslandContainer.isVisible
-        if (targetVisibility) {
-            binding.lyricsIslandContainer.show()
+        val targetState = show ?: !isLyricsOverlayEnabled
+        isLyricsOverlayEnabled = targetState
+
+        binding.lyricsButton.isEnabled = true
+        binding.lyricsButton.alpha = 1.0f
+
+        if (isLyricsOverlayEnabled) {
+            val isSyncedAvailable = lyrics is AbsSynchronizedLyrics && (lyrics as AbsSynchronizedLyrics).isSynchronized
+            binding.lyricsEditorIslandContainer.hide()
+            binding.lyricsButton.setImageResource(R.drawable.ic_lyrics)
             binding.lyricsButton.backgroundTintList = ColorStateList.valueOf(lastAccentColor)
-            binding.lyricsButton.animate().scaleX(1.15f).scaleY(1.15f).setDuration(150).withEndAction {
-                if (_binding != null) {
-                    binding.lyricsButton.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
-                }
-            }.start()
-            updateLyricsDisplay(MusicPlayerRemote.songProgressMillis)
+
+            if (isSyncedAvailable) {
+                binding.lyricsIslandContainer.show()
+                binding.lyricsButton.animate().rotationBy(360f).scaleX(1.15f).scaleY(1.15f).setDuration(200).withEndAction {
+                    if (_binding != null) {
+                        binding.lyricsButton.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
+                    }
+                }.start()
+                activeLineIndex = -2
+                updateLyricsDisplay(MusicPlayerRemote.songProgressMillis)
+            } else {
+                binding.lyricsIslandContainer.hide()
+                Toast.makeText(requireContext(), R.string.no_lyrics_found, Toast.LENGTH_SHORT).show()
+            }
         } else {
             binding.lyricsIslandContainer.hide()
+            binding.lyricsButton.setImageResource(R.drawable.ic_lyrics_outline)
             binding.lyricsButton.backgroundTintList = null
+            binding.lyricsButton.animate().rotationBy(-360f).setDuration(200).start()
+        }
+    }
+
+    private fun toggleLyricsEditor(show: Boolean? = null) {
+        val targetVisibility = show ?: !binding.lyricsEditorIslandContainer.isVisible
+        if (targetVisibility) {
+            wasLyricsOverlayActiveBeforeEditor = isLyricsOverlayEnabled
+            binding.queueIslandContainer.hide()
+            binding.lyricsIslandContainer.hide()
+            binding.lyricsEditorIslandContainer.show()
+
+            val song = MusicPlayerRemote.currentSong
+            binding.lyricsEditorSubtitle.text = "${song.title} • ${song.artistName}"
+            binding.lyricsTitleInput.setText(song.title)
+            binding.lyricsArtistInput.setText(song.artistName)
+            binding.lyricsAlbumInput.setText(song.albumName)
+
+            lifecycleScope.launch(Dispatchers.IO) {
+                val rawLyrics = try {
+                    val lrcFile = LyricUtil.getSyncedLyricsFile(song)
+                    val data = LyricUtil.getStringFromLrc(lrcFile)
+                    data.ifEmpty { LyricUtil.getEmbeddedSyncedLyrics(song.data) ?: "" }
+                } catch (e: Exception) {
+                    ""
+                }
+                withContext(Dispatchers.Main) {
+                    if (_binding == null) return@withContext
+                    binding.lyricsEditText.setText(rawLyrics)
+                    if (rawLyrics.isBlank()) {
+                        binding.lyricsSearchPanel.show()
+                    } else {
+                        binding.lyricsSearchPanel.hide()
+                    }
+                }
+            }
+        } else {
+            binding.lyricsEditorIslandContainer.hide()
+            if (wasLyricsOverlayActiveBeforeEditor) {
+                toggleLyricsOverlay(true)
+            }
+        }
+    }
+
+    private fun searchLyricsOnline() {
+        val title = binding.lyricsTitleInput.text?.toString()?.trim() ?: ""
+        val artist = binding.lyricsArtistInput.text?.toString()?.trim() ?: ""
+        val album = binding.lyricsAlbumInput.text?.toString()?.trim() ?: ""
+        val song = MusicPlayerRemote.currentSong
+
+        if (title.isBlank() && artist.isBlank()) {
+            Toast.makeText(requireContext(), R.string.no_search_results, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        binding.searchLyricsOnlineButton.hide()
+        binding.lyricsSearchProgress.show()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val repository = code.name.monkey.retromusic.lyrics.network.LrclibRepository()
+            val candidates = repository.findCandidates(
+                title = title,
+                artist = artist,
+                album = album,
+                durationSec = song.duration / 1000.0
+            )
+
+            withContext(Dispatchers.Main) {
+                if (_binding == null) return@withContext
+                binding.lyricsSearchProgress.hide()
+                binding.searchLyricsOnlineButton.show()
+
+                if (candidates.isNotEmpty()) {
+                    val bestMatch = candidates.first()
+                    val transliterated = code.name.monkey.retromusic.lyrics.transliteration.LyricsTransliterator.transliterateLrc(bestMatch.syncedLyrics)
+                    binding.lyricsEditText.setText(transliterated.text)
+                    Toast.makeText(requireContext(), R.string.save, Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(requireContext(), R.string.no_search_results, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun saveEditedLyrics() {
+        val newText = binding.lyricsEditText.text?.toString() ?: ""
+        val song = MusicPlayerRemote.currentSong
+        lifecycleScope.launch(Dispatchers.IO) {
+            LyricUtil.writeLrc(song, newText)
+            val parsedLyrics = Lyrics.parse(song, newText)
+            withContext(Dispatchers.Main) {
+                if (_binding == null) return@withContext
+                lyrics = parsedLyrics
+                activeLineIndex = -2
+                Toast.makeText(requireContext(), R.string.save, Toast.LENGTH_SHORT).show()
+                binding.lyricsEditorIslandContainer.hide()
+                toggleLyricsOverlay(true)
+            }
+        }
+    }
+
+    private fun runSearchReplaceInLyrics() {
+        val findText = binding.lyricsSearchWordInput.text?.toString() ?: ""
+        val replaceText = binding.lyricsReplaceWordInput.text?.toString() ?: ""
+        val currentLyrics = binding.lyricsEditText.text?.toString() ?: ""
+
+        if (findText.isBlank()) {
+            binding.lyricsSearchReplaceStatus.show()
+            binding.lyricsSearchReplaceStatus.text = "Enter search word"
+            return
+        }
+
+        val count = Regex(Regex.escape(findText), RegexOption.IGNORE_CASE).findAll(currentLyrics).count()
+        if (count == 0) {
+            binding.lyricsSearchReplaceStatus.show()
+            binding.lyricsSearchReplaceStatus.text = "No occurrences found"
+            return
+        }
+
+        val updatedLyrics = currentLyrics.replace(findText, replaceText, ignoreCase = true)
+        binding.lyricsEditText.setText(updatedLyrics)
+        binding.lyricsSearchWordInput.setText("")
+        binding.lyricsReplaceWordInput.setText("")
+
+        binding.lyricsSearchReplaceStatus.show()
+        binding.lyricsSearchReplaceStatus.text = "Replaced $count occurrence(s) in current track. Scanning background files..."
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            var updatedFilesCount = 0
+            val currentSong = MusicPlayerRemote.currentSong
+
+            val rootPath = File(android.os.Environment.getExternalStorageDirectory().toString() + "/RetroMusic/lyrics/")
+            if (rootPath.exists() && rootPath.isDirectory) {
+                val files = rootPath.listFiles() ?: emptyArray<File>()
+                for (file in files) {
+                    if (file.isFile && file.extension.lowercase() == "lrc") {
+                        val text = LyricUtil.getStringFromLrc(file)
+                        if (text.contains(findText, ignoreCase = true)) {
+                            val newLrc = text.replace(findText, replaceText, ignoreCase = true)
+                            val writer = FileWriter(file)
+                            writer.write(newLrc)
+                            writer.close()
+                            updatedFilesCount++
+                        }
+                    }
+                }
+            }
+
+            val allSongs = libraryViewModel.getSongs().value ?: emptyList()
+            for (s in allSongs) {
+                if (s.id == currentSong.id || s.data.isBlank()) continue
+                val audioFile = File(s.data)
+                if (audioFile.exists()) {
+                    val embedded = LyricUtil.getEmbeddedSyncedLyrics(s.data)
+                    if (embedded != null && embedded.contains(findText, ignoreCase = true)) {
+                        val newEmbedded = embedded.replace(findText, replaceText, ignoreCase = true)
+                        code.name.monkey.retromusic.lyrics.tagger.AudioTaggerHelper.embedLyrics(requireContext(), audioFile, newEmbedded)
+                        updatedFilesCount++
+                    }
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                if (_binding == null) return@withContext
+                binding.lyricsSearchReplaceStatus.text = "Replaced $count occurrence(s) in current track & updated $updatedFilesCount other file(s) in background."
+            }
         }
     }
 
@@ -174,13 +372,29 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
                 pos,
                 R.layout.item_queue
             )
+            recyclerViewTouchActionGuardManager = RecyclerViewTouchActionGuardManager()
+            recyclerViewDragDropManager = RecyclerViewDragDropManager()
+            recyclerViewSwipeManager = RecyclerViewSwipeManager()
+
+            val animator = DraggableItemAnimator()
+            animator.supportsChangeAnimations = false
+
+            var wrapped: RecyclerView.Adapter<*> = recyclerViewDragDropManager!!.createWrappedAdapter(playingQueueAdapter!!)
+            wrapped = recyclerViewSwipeManager!!.createWrappedAdapter(wrapped)
+            wrappedAdapter = wrapped
+
             binding.queueRecyclerView.layoutManager = LinearLayoutManager(requireContext())
-            binding.queueRecyclerView.adapter = playingQueueAdapter
+            binding.queueRecyclerView.adapter = wrappedAdapter
+            binding.queueRecyclerView.itemAnimator = animator
+
+            recyclerViewTouchActionGuardManager?.attachRecyclerView(binding.queueRecyclerView)
+            recyclerViewDragDropManager?.attachRecyclerView(binding.queueRecyclerView)
+            recyclerViewSwipeManager?.attachRecyclerView(binding.queueRecyclerView)
         } else {
             playingQueueAdapter?.swapDataSet(queue, pos)
         }
         if (pos in queue.indices) {
-            binding.queueRecyclerView.scrollToPosition(pos)
+            (binding.queueRecyclerView.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(pos, 0)
         }
     }
 
@@ -189,8 +403,6 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         binding.playPauseButton.setOnClickListener(PlayPauseButtonOnClickHandler())
         binding.nextButton.setOnTouchListener(MusicSeekSkipTouchListener(requireActivity(), true))
         binding.previousButton.setOnTouchListener(MusicSeekSkipTouchListener(requireActivity(), false))
-        binding.nextButton.setOnClickListener { MusicPlayerRemote.playNextSong() }
-        binding.previousButton.setOnClickListener { MusicPlayerRemote.playPreviousSong() }
         binding.shuffleButton.setOnClickListener { MusicPlayerRemote.toggleShuffleMode() }
         repeatButton().setOnClickListener { MusicPlayerRemote.cycleRepeatMode() }
         setupFavourite()
@@ -223,8 +435,12 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
                 toggleQueueIsland()
                 return true
             }
-            R.id.action_toggle_lyrics, R.id.action_go_to_lyrics -> {
+            R.id.action_toggle_lyrics -> {
                 toggleLyricsOverlay()
+                return true
+            }
+            R.id.action_go_to_lyrics -> {
+                toggleLyricsEditor(true)
                 return true
             }
         }
@@ -279,6 +495,23 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         return active
     }
 
+    private fun cleanLyricText(raw: String): String {
+        var text = raw.trim()
+        if (text.startsWith("\"") && text.endsWith("\"") && text.length >= 2) {
+            text = text.substring(1, text.length - 1).trim()
+        }
+        if (text.startsWith("“") && text.endsWith("”") && text.length >= 2) {
+            text = text.substring(1, text.length - 1).trim()
+        }
+        if (text == "-" || text == "—" || text == "_" || text == "..." || text.isBlank()) {
+            return ""
+        }
+        if (!text.any { it.isLetterOrDigit() }) {
+            return ""
+        }
+        return text
+    }
+
     private fun updateLyricsDisplay(progressMs: Int) {
         if (_binding == null || !binding.lyricsIslandContainer.isVisible || lyrics !is AbsSynchronizedLyrics) return
         val syncLyrics = lyrics as AbsSynchronizedLyrics
@@ -288,20 +521,36 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         val idx = findActiveLineIndex(progressMs, syncLyrics)
         if (idx != activeLineIndex) {
             activeLineIndex = idx
-            val prevText = if (idx > 0) syncLyrics.getLineText(idx - 1) else "—"
-            val activeText = if (idx in 0 until count) syncLyrics.getLineText(idx) else "—"
-            val nextText = if (idx + 1 in 0 until count) syncLyrics.getLineText(idx + 1) else "—"
+            val prevText = if (idx > 0) cleanLyricText(syncLyrics.getLineText(idx - 1)) else ""
+            val activeText = if (idx in 0 until count) cleanLyricText(syncLyrics.getLineText(idx)) else ""
+            val nextText = if (idx + 1 in 0 until count) cleanLyricText(syncLyrics.getLineText(idx + 1)) else ""
 
             binding.lyricsPrevLine.text = prevText
-            binding.lyricsActiveLine.text = "\"$activeText\""
+            binding.lyricsActiveLine.text = activeText
             binding.lyricsNextLine.text = nextText
 
+            val interpolator = PathInterpolator(0.2f, 0.0f, 0.0f, 1.0f)
             binding.lyricsActiveLine.alpha = 0f
-            binding.lyricsActiveLine.translationY = 6f
+            binding.lyricsActiveLine.translationY = 12f
             binding.lyricsActiveLine.animate()
-                .alpha(1f)
+                .alpha(0.94f)
                 .translationY(0f)
                 .setDuration(350)
+                .setInterpolator(interpolator)
+                .start()
+
+            binding.lyricsNextLine.alpha = 0f
+            binding.lyricsNextLine.animate()
+                .alpha(0.60f)
+                .setDuration(350)
+                .setInterpolator(interpolator)
+                .start()
+
+            binding.lyricsPrevLine.alpha = 0f
+            binding.lyricsPrevLine.animate()
+                .alpha(0.35f)
+                .setDuration(350)
+                .setInterpolator(interpolator)
                 .start()
         }
     }
@@ -342,6 +591,9 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         val queueBg = binding.queueIslandContainer.background as? GradientDrawable
         queueBg?.setColor(palette.islandBg)
 
+        val editorBg = binding.lyricsEditorIslandContainer.background as? GradientDrawable
+        editorBg?.setColor(palette.islandBg)
+
         binding.title.setTextColor(palette.textPrimary)
         binding.text.setTextColor(palette.textSecondary)
         binding.songCurrentProgress.setTextColor(palette.textSecondary)
@@ -350,6 +602,19 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         binding.queueTitle.setTextColor(palette.textPrimary)
         binding.queueCount.setTextColor(palette.textSecondary)
         binding.closeQueueButton.imageTintList = ColorStateList.valueOf(palette.textPrimary)
+
+        binding.lyricsEditorTitle.setTextColor(palette.textPrimary)
+        binding.lyricsEditorSubtitle.setTextColor(palette.textSecondary)
+        binding.saveLyricsButton.imageTintList = ColorStateList.valueOf(palette.textPrimary)
+        binding.closeLyricsEditorButton.imageTintList = ColorStateList.valueOf(palette.textPrimary)
+
+        val activeColor = ColorUtils.setAlphaComponent(Color.WHITE, (255 * 0.94).toInt())
+        val nextColor = ColorUtils.setAlphaComponent(Color.WHITE, (255 * 0.60).toInt())
+        val prevColor = ColorUtils.setAlphaComponent(Color.WHITE, (255 * 0.35).toInt())
+
+        binding.lyricsActiveLine.setTextColor(activeColor)
+        binding.lyricsNextLine.setTextColor(nextColor)
+        binding.lyricsPrevLine.setTextColor(prevColor)
 
         binding.upNextIcon.imageTintList = ColorStateList.valueOf(palette.accentColor)
 
@@ -443,6 +708,10 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
         updateAlbumImage()
         updateLabel()
         updateSong()
+        if (_binding != null && binding.queueIslandContainer.isVisible) {
+            playingQueueAdapter?.setCurrent(MusicPlayerRemote.position)
+            (binding.queueRecyclerView.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(MusicPlayerRemote.position, 0)
+        }
     }
 
     override fun onPlayStateChanged() {
@@ -471,9 +740,14 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
     private fun updateLyrics() {
         lyrics = null
         activeLineIndex = -2
+        if (_binding != null) {
+            binding.lyricsPrevLine.text = ""
+            binding.lyricsActiveLine.text = ""
+            binding.lyricsNextLine.text = ""
+        }
         lifecycleScope.launch(Dispatchers.IO) {
             val song = MusicPlayerRemote.currentSong
-            lyrics = try {
+            val loadedLyrics = try {
                 val lrcFile = LyricUtil.getSyncedLyricsFile(song)
                 val data = LyricUtil.getStringFromLrc(lrcFile)
                 Lyrics.parse(song, data.ifEmpty { LyricUtil.getEmbeddedSyncedLyrics(song.data) })
@@ -482,11 +756,25 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
             }
             withContext(Dispatchers.Main) {
                 if (_binding == null) return@withContext
+                lyrics = loadedLyrics
                 val isSyncedAvailable = lyrics is AbsSynchronizedLyrics && (lyrics as AbsSynchronizedLyrics).isSynchronized
-                binding.lyricsButton.isEnabled = isSyncedAvailable
-                binding.lyricsButton.alpha = if (isSyncedAvailable) 1.0f else 0.3f
-                if (!isSyncedAvailable) {
-                    toggleLyricsOverlay(false)
+                binding.lyricsButton.isEnabled = true
+                binding.lyricsButton.alpha = 1.0f
+
+                if (isLyricsOverlayEnabled) {
+                    binding.lyricsButton.setImageResource(R.drawable.ic_lyrics)
+                    binding.lyricsButton.backgroundTintList = ColorStateList.valueOf(lastAccentColor)
+                    if (isSyncedAvailable) {
+                        binding.lyricsIslandContainer.show()
+                        activeLineIndex = -2
+                        updateLyricsDisplay(MusicPlayerRemote.songProgressMillis)
+                    } else {
+                        binding.lyricsIslandContainer.hide()
+                    }
+                } else {
+                    binding.lyricsIslandContainer.hide()
+                    binding.lyricsButton.setImageResource(R.drawable.ic_lyrics_outline)
+                    binding.lyricsButton.backgroundTintList = null
                 }
             }
         }
@@ -528,11 +816,25 @@ class FullIslandPlayerFragment : AbsPlayerFragment(R.layout.fragment_full_island
     }
 
     override fun onPause() {
+        recyclerViewDragDropManager?.cancelDrag()
         super.onPause()
         progressViewUpdateHelper.stop()
     }
 
     override fun onDestroyView() {
+        if (recyclerViewDragDropManager != null) {
+            recyclerViewDragDropManager?.release()
+            recyclerViewDragDropManager = null
+        }
+        if (recyclerViewSwipeManager != null) {
+            recyclerViewSwipeManager?.release()
+            recyclerViewSwipeManager = null
+        }
+        if (wrappedAdapter != null) {
+            WrapperAdapterUtils.releaseAll(wrappedAdapter)
+            wrappedAdapter = null
+        }
+        playingQueueAdapter = null
         super.onDestroyView()
         _binding = null
     }

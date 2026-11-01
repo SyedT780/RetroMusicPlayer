@@ -1,5 +1,0 @@
-# Tracker JSONL event logs live at .genai-usage/<ai_tool>/<username_hash>/*.jsonl.
-# Use union merge so concurrent branches do not produce merge conflicts on these
-# append-only logs. The */*/*.jsonl glob anchors the depth so unrelated JSONL
-# files (if any) are not affected.
-*/*/*.jsonl merge=union

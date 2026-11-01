@@ -22,8 +22,24 @@ public abstract class AbsSynchronizedLyrics extends Lyrics {
       500; // time adjustment to display line before it actually starts
 
   protected final SparseArray<String> lines = new SparseArray<>();
+  protected final SparseArray<String> meanings = new SparseArray<>();
 
   protected int offset = 0;
+
+  public boolean hasMeanings() {
+    parse(false);
+    return meanings.size() > 0;
+  }
+
+  public String getLineMeaning(int index) {
+    parse(false);
+    if (index >= 0 && index < lines.size()) {
+      int key = lines.keyAt(index);
+      String meaning = meanings.get(key);
+      return meaning != null ? meaning : "";
+    }
+    return "";
+  }
 
   public String getLine(int time) {
     time += offset + AbsSynchronizedLyrics.TIME_OFFSET_MS;

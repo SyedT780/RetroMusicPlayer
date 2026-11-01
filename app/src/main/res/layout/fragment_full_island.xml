@@ -98,24 +98,24 @@
             <!-- Lyrics Toggle Button -->
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/lyricsButton"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="8dp"
                 android:background="@drawable/bg_frosted_subcard"
                 android:elevation="10dp"
-                android:padding="8dp"
+                android:padding="7dp"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toStartOf="@+id/albumButton"
                 app:layout_constraintTop_toTopOf="parent"
                 app:shapeAppearance="@style/ShapeAppearance.Material3.Circle"
-                app:srcCompat="@drawable/ic_lyrics"
+                app:srcCompat="@drawable/ic_lyrics_outline"
                 app:tint="@color/md_white_1000" />
 
             <!-- Album Cover Thumbnail Button (Replaces artist button) -->
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/albumButton"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
                 android:layout_marginEnd="16dp"
                 android:elevation="10dp"
                 app:layout_constraintBottom_toBottomOf="parent"
@@ -127,7 +127,7 @@
 
     </com.google.android.material.appbar.MaterialToolbar>
 
-    <!-- LAYER 3.5: Middle Islands Container (Queue Island & Frameless Lyrics Overlay) -->
+    <!-- LAYER 3.5: Middle Islands Container (Queue Island, Lyrics Editor Island & Frameless Lyrics Overlay) -->
     <LinearLayout
         android:id="@+id/middleIslandsContainer"
         android:layout_width="0dp"
@@ -151,7 +151,9 @@
             android:layout_marginBottom="8dp"
             android:background="@drawable/bg_island_capsule"
             android:elevation="18dp"
-            android:padding="16dp"
+            android:paddingHorizontal="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="6dp"
             android:visibility="gone"
             tools:visibility="visible">
 
@@ -164,7 +166,7 @@
                 <RelativeLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:paddingBottom="8dp">
+                    android:paddingBottom="4dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -216,6 +218,276 @@
             </LinearLayout>
         </FrameLayout>
 
+        <!-- Lyrics Editor Island Container ("Go to lyrics") -->
+        <FrameLayout
+            android:id="@+id/lyricsEditorIslandContainer"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/bg_island_capsule"
+            android:elevation="18dp"
+            android:padding="16dp"
+            android:visibility="gone"
+            tools:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <!-- Editor Header Row -->
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="8dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentStart="true"
+                        android:layout_toStartOf="@id/editorHeaderActions"
+                        android:layout_centerVertical="true"
+                        android:orientation="vertical">
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/lyricsEditorTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/edit_synced_lyrics"
+                            android:textAppearance="@style/TextViewSubtitle1"
+                            android:textColor="@color/md_white_1000"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/lyricsEditorSubtitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:alpha="0.75"
+                            android:textColor="@color/md_white_1000"
+                            android:textSize="11sp"
+                            tools:text="Edit song lyrics" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/editorHeaderActions"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:layout_centerVertical="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <androidx.appcompat.widget.AppCompatImageView
+                            android:id="@+id/saveLyricsButton"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:layout_marginEnd="8dp"
+                            android:background="?attr/roundSelector"
+                            android:padding="6dp"
+                            app:srcCompat="@drawable/ic_save"
+                            app:tint="@color/md_white_1000" />
+
+                        <androidx.appcompat.widget.AppCompatImageView
+                            android:id="@+id/closeLyricsEditorButton"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="?attr/roundSelector"
+                            android:padding="6dp"
+                            app:srcCompat="@drawable/ic_close"
+                            app:tint="@color/md_white_1000" />
+                    </LinearLayout>
+                </RelativeLayout>
+
+                <!-- Search & Replace Row (placed at top of card so keyboard never obscures it) -->
+                <LinearLayout
+                    android:id="@+id/lyricsSearchReplaceRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="6dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="4dp"
+                        android:hint="Search word"
+                        app:hintTextColor="@color/md_white_1000"
+                        app:boxStrokeColor="@color/md_white_1000">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/lyricsSearchWordInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:singleLine="true"
+                            android:textColor="@color/md_white_1000"
+                            android:textSize="12sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="8dp"
+                        android:hint="Replace with"
+                        app:hintTextColor="@color/md_white_1000"
+                        app:boxStrokeColor="@color/md_white_1000">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/lyricsReplaceWordInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:singleLine="true"
+                            android:textColor="@color/md_white_1000"
+                            android:textSize="12sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <androidx.appcompat.widget.AppCompatImageView
+                        android:id="@+id/runSearchReplaceButton"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="?attr/roundSelector"
+                        android:padding="8dp"
+                        app:srcCompat="@drawable/ic_redo"
+                        app:tint="@color/md_white_1000" />
+                </LinearLayout>
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/lyricsSearchReplaceStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="4dp"
+                    android:alpha="0.8"
+                    android:textColor="@color/md_white_1000"
+                    android:textSize="11sp"
+                    android:visibility="gone"
+                    tools:text="Replaced 2 occurrence(s) in current track &amp; updated 3 other files in background"
+                    tools:visibility="visible" />
+
+                <!-- Online Search Panel (shown when no lyrics exist or user wants to search) -->
+                <LinearLayout
+                    android:id="@+id/lyricsSearchPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingBottom="6dp"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:hint="@string/song"
+                        app:hintTextColor="@color/md_white_1000"
+                        app:boxStrokeColor="@color/md_white_1000">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/lyricsTitleInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:singleLine="true"
+                            android:textColor="@color/md_white_1000"
+                            android:textSize="13sp" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="4dp"
+                            android:hint="@string/artist"
+                            app:hintTextColor="@color/md_white_1000"
+                            app:boxStrokeColor="@color/md_white_1000">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/lyricsArtistInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:singleLine="true"
+                                android:textColor="@color/md_white_1000"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.Dense"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="4dp"
+                            android:hint="@string/album"
+                            app:hintTextColor="@color/md_white_1000"
+                            app:boxStrokeColor="@color/md_white_1000">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/lyricsAlbumInput"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:singleLine="true"
+                                android:textColor="@color/md_white_1000"
+                                android:textSize="13sp" />
+                        </com.google.android.material.textfield.TextInputLayout>
+                    </LinearLayout>
+
+                    <RelativeLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/searchLyricsOnlineButton"
+                            style="@style/Widget.Material3.Button.Icon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_centerHorizontal="true"
+                            android:text="@string/action_search"
+                            android:textSize="12sp"
+                            app:icon="@drawable/ic_search" />
+
+                        <ProgressBar
+                            android:id="@+id/lyricsSearchProgress"
+                            style="?android:attr/progressBarStyleSmall"
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_centerInParent="true"
+                            android:visibility="gone" />
+                    </RelativeLayout>
+                </LinearLayout>
+
+                <!-- Multiline Lyrics Edit Text -->
+                <androidx.core.widget.NestedScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:fillViewport="true">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/lyricsEditText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@null"
+                        android:gravity="top|start"
+                        android:hint="@string/paste_timeframe_lyrics_here"
+                        android:inputType="textMultiLine"
+                        android:textColor="@color/md_white_1000"
+                        android:textColorHint="#80FFFFFF"
+                        android:textSize="14sp" />
+                </androidx.core.widget.NestedScrollView>
+            </LinearLayout>
+        </FrameLayout>
+
         <!-- Frameless Glassmorphic Lyrics Overlay Container -->
         <FrameLayout
             android:id="@+id/lyricsIslandContainer"
@@ -228,25 +500,28 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:gravity="center"
+                android:gravity="bottom|start"
                 android:orientation="vertical"
-                android:paddingHorizontal="8dp">
+                android:paddingHorizontal="16dp"
+                android:paddingBottom="16dp">
 
                 <!-- Previous Lyric Line (i - 1) -->
                 <com.google.android.material.textview.MaterialTextView
                     android:id="@+id/lyricsPrevLine"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center"
+                    android:gravity="start"
+                    android:textAlignment="viewStart"
                     android:maxLines="2"
-                    android:shadowColor="#59000000"
+                    android:fontFamily="sans-serif-medium"
+                    android:shadowColor="#A6000000"
                     android:shadowDx="0"
                     android:shadowDy="1"
-                    android:shadowRadius="4"
-                    android:textColor="#521C1A24"
-                    android:textSize="14sp"
+                    android:shadowRadius="6"
+                    android:textColor="#59FFFFFF"
+                    android:textSize="16sp"
                     android:textStyle="bold"
-                    tools:text="—" />
+                    tools:text="J-LO! Mr. Worldwide!" />
 
                 <!-- Active Lyric Line (i) -->
                 <com.google.android.material.textview.MaterialTextView
@@ -254,14 +529,16 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginVertical="8dp"
-                    android:gravity="center"
+                    android:gravity="start"
+                    android:textAlignment="viewStart"
                     android:maxLines="3"
-                    android:shadowColor="#A6000000"
+                    android:fontFamily="sans-serif-black"
+                    android:shadowColor="#CC000000"
                     android:shadowDx="0"
                     android:shadowDy="2"
-                    android:shadowRadius="14"
-                    android:textColor="#C716141C"
-                    android:textSize="30sp"
+                    android:shadowRadius="12"
+                    android:textColor="#F0FFFFFF"
+                    android:textSize="36sp"
                     android:textStyle="bold"
                     tools:text="Dance the night away, live your life and stay young on the floor" />
 
@@ -270,16 +547,18 @@
                     android:id="@+id/lyricsNextLine"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center"
+                    android:gravity="start"
+                    android:textAlignment="viewStart"
                     android:maxLines="2"
-                    android:shadowColor="#73000000"
+                    android:fontFamily="sans-serif"
+                    android:shadowColor="#A6000000"
                     android:shadowDx="0"
                     android:shadowDy="1"
                     android:shadowRadius="8"
-                    android:textColor="#851A1821"
-                    android:textSize="18sp"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="20sp"
                     android:textStyle="bold"
-                    tools:text="..." />
+                    tools:text="Tonight we gon' be it on the floor" />
             </LinearLayout>
         </FrameLayout>
     </LinearLayout>

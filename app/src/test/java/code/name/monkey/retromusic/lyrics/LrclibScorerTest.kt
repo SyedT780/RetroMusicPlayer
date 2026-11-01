@@ -39,4 +39,32 @@ class LrclibScorerTest {
         val isAutoSelectHighConfidence = (topScore >= 0.85f) && ((topScore - highDeltaSecondScore) >= 0.12f)
         assertTrue(isAutoSelectHighConfidence) // Should auto-select top candidate!
     }
+
+    @Test
+    fun testSplitArtists() {
+        val artists = repository.splitArtists("Sharib Toshi, Arijit Singh")
+        assertEquals(2, artists.size)
+        assertEquals("Sharib Toshi", artists[0])
+        assertEquals("Arijit Singh", artists[1])
+
+        val featArtists = repository.splitArtists("Song Artist feat. Secondary Artist")
+        assertEquals(2, featArtists.size)
+        assertEquals("Song Artist", featArtists[0])
+        assertEquals("Secondary Artist", featArtists[1])
+    }
+
+    @Test
+    fun testCleanTitle() {
+        val cleaned1 = repository.cleanTitle("Saanson Ko (Official Video)")
+        assertEquals("Saanson Ko", cleaned1)
+
+        val cleaned2 = repository.cleanTitle("Hotel California - 2013 Remaster")
+        assertEquals("Hotel California", cleaned2)
+    }
+
+    @Test
+    fun testMultiArtistSimilarity() {
+        val sim = repository.calculateArtistSimilarity("Sharib Toshi, Arijit Singh", "Arijit Singh")
+        assertEquals(1.0f, sim, 0.001f)
+    }
 }

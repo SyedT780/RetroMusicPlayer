@@ -15,16 +15,21 @@
         android:title="@string/lyrics"
         app:showAsAction="always" />
     <item
+        android:id="@+id/action_go_to_lyrics"
+        android:icon="@drawable/ic_lyrics"
+        android:orderInCategory="2"
+        android:title="@string/action_go_to_lyrics" />
+    <item
         android:id="@+id/action_toggle_favorite"
         android:checkable="true"
         android:icon="@drawable/ic_favorite"
-        android:orderInCategory="2"
+        android:orderInCategory="3"
         android:title="@string/favorites"
         app:showAsAction="always" />
     <item
         android:id="@+id/now_playing"
         android:icon="@drawable/ic_queue_music"
-        android:orderInCategory="3"
+        android:orderInCategory="4"
         android:title="@string/now_playing_queue"
         app:showAsAction="always" />
     <item
@@ -77,10 +82,6 @@
         android:id="@+id/action_details"
         android:orderInCategory="10"
         android:title="@string/action_details" />
-    <item
-        android:id="@+id/action_go_to_lyrics"
-        android:orderInCategory="11"
-        android:title="@string/action_go_to_lyrics" />
     <item
         android:id="@+id/action_equalizer"
         android:orderInCategory="13"

@@ -17,7 +17,7 @@ class LrclibRepository {
     private val userAgent = "MusicAppLyricsStudio/3.0 (Android)"
     private val rateLimiterMutex = Mutex()
     private var lastRequestTime = 0L
-    private val minDelayMs = 350L
+    private val minDelayMs = 100L
 
     private suspend fun throttle() {
         rateLimiterMutex.withLock {
@@ -59,11 +59,61 @@ class LrclibRepository {
             }
         }
 
-        // Step 3: Weighted Prioritized Scoring (Title > Album > Artist > Duration)
+        var candidates = evaluateCandidates(rawResults, title, artist, album, durationSec)
+
+        // Step 3: Multi-Artist Fallback
+        val splitArtistList = splitArtists(artist)
+        if (candidates.isEmpty() && splitArtistList.size > 1) {
+            for (singleArtist in splitArtistList) {
+                throttle()
+                val singleArtistSearchUrl = "$baseUrl/api/search?track_name=${enc(title)}&artist_name=${enc(singleArtist)}"
+                val array = httpGetArray(singleArtistSearchUrl)
+                if (array != null) {
+                    for (i in 0 until array.length()) {
+                        val item = array.getJSONObject(i)
+                        if (item.optString("syncedLyrics").isNotBlank()) {
+                            rawResults.add(item)
+                        }
+                    }
+                }
+            }
+            candidates = evaluateCandidates(rawResults, title, artist, album, durationSec)
+        }
+
+        // Step 4: Clean Title Fallback
+        val cleaned = cleanTitle(title)
+        if (candidates.isEmpty() && cleaned.isNotBlank() && !cleaned.equals(title, ignoreCase = true)) {
+            val artistsToQuery = if (splitArtistList.isNotEmpty()) splitArtistList + artist else listOf(artist)
+            for (art in artistsToQuery.distinct()) {
+                throttle()
+                val cleanSearchUrl = "$baseUrl/api/search?track_name=${enc(cleaned)}&artist_name=${enc(art)}"
+                val array = httpGetArray(cleanSearchUrl)
+                if (array != null) {
+                    for (i in 0 until array.length()) {
+                        val item = array.getJSONObject(i)
+                        if (item.optString("syncedLyrics").isNotBlank()) {
+                            rawResults.add(item)
+                        }
+                    }
+                }
+            }
+            candidates = evaluateCandidates(rawResults, title, artist, album, durationSec)
+        }
+
+        return candidates
+    }
+
+    private fun evaluateCandidates(
+        rawResults: List<JSONObject>,
+        title: String,
+        artist: String,
+        album: String,
+        durationSec: Double
+    ): List<CandidateRecord> {
         val candidateMap = mutableMapOf<Long, CandidateRecord>()
         for (obj in rawResults) {
             val id = obj.optLong("id")
-            if (candidateMap.containsKey(id)) continue
+            if (id <= 0L || candidateMap.containsKey(id)) continue
 
             val cTitle = obj.optString("trackName")
             val cArtist = obj.optString("artistName")
@@ -71,9 +121,14 @@ class LrclibRepository {
             val cDur = obj.optDouble("duration", 0.0)
             val cLyrics = obj.optString("syncedLyrics")
 
-            val sTitle = stringSimilarity(title, cTitle)
+            if (cLyrics.isBlank()) continue
+
+            val sTitle = maxOf(
+                stringSimilarity(title, cTitle),
+                stringSimilarity(cleanTitle(title), cleanTitle(cTitle))
+            )
             val sAlbum = if (album.isNotBlank() && cAlbum.isNotBlank()) stringSimilarity(album, cAlbum) else 0.5f
-            val sArtist = if (artist.isNotBlank() && cArtist.isNotBlank()) stringSimilarity(artist, cArtist) else 0.5f
+            val sArtist = calculateArtistSimilarity(artist, cArtist)
             val durDelta = abs(durationSec - cDur)
             val sDuration = max(0.0, 1.0 - (durDelta / 5.0)).toFloat()
 
@@ -92,8 +147,44 @@ class LrclibRepository {
                 )
             }
         }
-
         return candidateMap.values.sortedByDescending { it.score }
+    }
+
+    fun calculateArtistSimilarity(artist1: String, artist2: String): Float {
+        val baseSim = stringSimilarity(artist1, artist2)
+        if (baseSim >= 0.85f) return baseSim
+
+        val splits1 = splitArtists(artist1)
+        val splits2 = splitArtists(artist2)
+
+        var maxSplitSim = baseSim
+        for (s1 in splits1) {
+            val simFull = stringSimilarity(s1, artist2)
+            if (simFull > maxSplitSim) maxSplitSim = simFull
+
+            for (s2 in splits2) {
+                val simPair = stringSimilarity(s1, s2)
+                if (simPair > maxSplitSim) maxSplitSim = simPair
+            }
+        }
+        return maxSplitSim
+    }
+
+    fun splitArtists(artist: String): List<String> {
+        if (artist.isBlank()) return emptyList()
+        val delimiterRegex = Regex("(?i)\\s*(?:,|&|/|;|\\\\|\\bfeat\\.?|\\bft\\.?|\\bfeaturing)\\s*")
+        return artist.split(delimiterRegex)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+    }
+
+    fun cleanTitle(title: String): String {
+        if (title.isBlank()) return ""
+        var cleaned = title
+        cleaned = cleaned.replace(Regex("(?i)\\s*[\\(\\[\\{](?:feat|ft|official|remaster|live|video|lyric|audio|bonus|prod).*?[\\)\\]\\}]"), "")
+        cleaned = cleaned.replace(Regex("(?i)\\s*-\\s*(?:\\d{4}\\s*)?remaster.*"), "")
+        cleaned = cleaned.replace(Regex("(?i)\\s*-\\s*official.*"), "")
+        return cleaned.trim()
     }
 
     fun stringSimilarity(s1: String, s2: String): Float {

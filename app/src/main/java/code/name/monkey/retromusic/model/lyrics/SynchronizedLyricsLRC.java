@@ -38,6 +38,7 @@ class SynchronizedLyricsLRC extends AbsSynchronizedLyrics {
     }
 
     String[] lines = this.data.split("\r?\n");
+    int lastKeyMs = -1;
 
     for (String line : lines) {
       line = line.trim();
@@ -80,7 +81,10 @@ class SynchronizedLyricsLRC extends AbsSynchronizedLyrics {
             }
 
             this.lines.append(ms, text);
+            lastKeyMs = ms;
           }
+        } else if (lastKeyMs != -1 && !line.startsWith("[")) {
+          this.meanings.append(lastKeyMs, line);
         }
       }
     }

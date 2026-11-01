@@ -22,12 +22,18 @@ data class DisambiguationRequest(
     val deferredChoice: CompletableDeferred<CandidateRecord?>
 )
 
+data class TransliterationResult(
+    val text: String,
+    val wasTransliterated: Boolean
+)
+
 data class SyncDashboardStats(
     val totalFiles: Int = 0,
     val processedFiles: Int = 0,
     val alreadySyncedCount: Int = 0,
     val embeddedCount: Int = 0,
     val ambiguousPromptCount: Int = 0,
+    val totalAmbiguousCount: Int = 0,
     val failedCount: Int = 0,
     val currentFileName: String = "",
     val currentStatusMessage: String = "Idle",
